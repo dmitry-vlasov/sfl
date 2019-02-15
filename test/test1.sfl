@@ -1,0 +1,33 @@
+  
+
+    // SL Comment 
+    /* 
+    ML Comment 
+    */ 
+	x : int = 1;
+	print x;
+	y : int = 0;
+	print y;
+	z1 : [int] = [0, 1, 2];
+	z2 : [int] = [3, 4, 5];
+	t : int = [z1[0]];
+	z3 : [int] = (z1 + z2);
+	len : int = |z3|;
+	xx : int = -123;
+	//yy : [int] = - z3; 
+	
+	g : () -> int = /\ -> (x + x); 
+	//f : (int) -> int = z3; 
+	f : (int) -> int = /\ a : int -> (a * y);
+	z : [int] = [5];
+	while x < 10 do {
+		x = (x + 1);
+		print x;
+		y = (y + (f (x)));
+		print y;
+		z = (z + [y]); 
+	};
+	
+	while x < 10 do x = (x + 1)
+
+
