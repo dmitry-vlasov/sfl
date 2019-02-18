@@ -103,15 +103,15 @@ struct BinOp : public Expr {
 		switch (op) {
 		case PLUS:
 			if (!lhs->type()->equal(rhs->type())) {
-				throw Error("binary operation " + dumpOp(op) + " operand types must be equal");
+				throw CompileError("binary operation " + dumpOp(op) + " operand types must be equal");
 			}
 			if (dynamic_cast<const Func*>(lhs->type())) {
-				throw Error("no binary operations on functions are allowed");
+				throw CompileError("no binary operations on functions are allowed");
 			}
 			break;
 		default:
 			if (!dynamic_cast<const Int*>(lhs->type()) || !dynamic_cast<const Int*>(rhs->type())) {
-				throw Error("binary operation " + dumpOp(op) + " operand types must be integer");
+				throw CompileError("binary operation " + dumpOp(op) + " operand types must be integer");
 			}
 		}
 	}
@@ -174,7 +174,7 @@ struct UnOp : public Expr {
 	enum Kind { MINUS };
 	UnOp(Expr* e, Kind o) : expr(e), op(o) {
 		if (!expr->type()->equal(type())) {
-			throw Error("Unary operator - argument must be integer");
+			throw CompileError("Unary operator - argument must be integer");
 		}
 	}
 	const unique_ptr<Expr> expr;
@@ -218,10 +218,10 @@ struct VarAccess : public Expr {
 struct ArrayAccess : public Expr {
 	ArrayAccess(Expr* a, Expr* i) : arr(a), ind(i) {
 		if (!dynamic_cast<const Array*>(arr->type())) {
-			throw Error("Array expression is needed");
+			throw CompileError("Array expression is needed");
 		}
 		if (!dynamic_cast<const Int*>(ind->type())) {
-			throw Error("Array index expression must have int type");
+			throw CompileError("Array index expression must have int type");
 		}
 	}
 	const unique_ptr<Expr> arr;
@@ -249,13 +249,13 @@ struct ArrayAccess : public Expr {
 struct ArrayMake : public Expr {
 	ArrayMake(vector<Expr*> es) {
 		if (!es.size()) {
-			throw Error("Cannot create empty array because it's type is unknown");
+			throw CompileError("Cannot create empty array because it's type is unknown");
 		}
 		const Type* elementType = es[0]->type();
 		tp.reset(new Array(elementType->clone()));
 		for (Expr* e : es) {
 			if (!e->type()->equal(elementType)) {
-				throw Error("All elements of an array must be of the same type");
+				throw CompileError("All elements of an array must be of the same type");
 			}
 			arr.emplace_back(e);
 		}
@@ -285,7 +285,7 @@ struct ArrayMake : public Expr {
 struct ArrayLen : public Expr {
 	ArrayLen(Expr* a) : arr(a) {
 		if (!dynamic_cast<const Array*>(a->type())) {
-			throw Error("Array length argument must be an array");
+			throw CompileError("Array length argument must be an array");
 		}
 	}
 	unique_ptr<Expr> arr;
@@ -308,14 +308,14 @@ struct FunCall : public Expr {
 	FunCall(Expr* f, const vector<Expr*>& ars = vector<Expr*>()) : fun(f) {
 		const Func* fun_type = dynamic_cast<const Func*>(f->type());
 		if (!fun_type) {
-			throw Error("Function expression is needed");
+			throw CompileError("Function expression is needed");
 		}
 		if (fun_type->arity() != ars.size()) {
-			throw Error("Function arity mismatch");
+			throw CompileError("Function arity mismatch");
 		}
 		for (int i = 0; i < ars.size(); ++ i) {
 			if (!fun_type->args[i]->equal(ars[i]->type())) {
-				throw Error("Function argument type mismatch: " + fun_type->args[i]->dump() + " != " + ars[i]->type()->dump());
+				throw CompileError("Function argument type mismatch: " + fun_type->args[i]->dump() + " != " + ars[i]->type()->dump());
 			}
 			args.emplace_back(ars[i]);
 		}
@@ -395,12 +395,12 @@ struct Cond {
 		switch (o) {
 		case EQ:
 			if (!lhs->type()->equal(rhs->type())) {
-				throw Error("when comparing with = both operands must have same type");
+				throw CompileError("when comparing with = both operands must have same type");
 			}
 			break;
 		default:
 			if (!dynamic_cast<const Int*>(lhs->type()) || !dynamic_cast<const Int*>(rhs->type())) {
-				throw Error("when comparing with " + dumpOp(op) + " operands must have int type");
+				throw CompileError("when comparing with " + dumpOp(op) + " operands must have int type");
 			}
 		}
 	}
@@ -478,7 +478,7 @@ struct While : public Statement {
 struct If : public Statement {
 	If(Cond* c, Statement* p, Statement* n) : cond(c), pos(p), neg(n) {
 		if (!pos->type()->equal(neg->type())) {
-			throw Error("Types differ in positive and negative branches: " + pos->type()->dump() + " != " + neg->type()->dump());
+			throw CompileError("Types differ in positive and negative branches: " + pos->type()->dump() + " != " + neg->type()->dump());
 		}
 	}
 	const unique_ptr<Cond> cond;
@@ -507,7 +507,7 @@ struct If : public Statement {
 struct Assign : public Statement {
 	Assign(const string& n, Expr* e, Type* t) : name(n), expr(e), tp(t) {
 		if (!t->equal(e->type())) {
-			throw Error("Type mismatch in assignment: " + t->dump() + " != " + e->type()->dump());
+			throw CompileError("Type mismatch in assignment: " + t->dump() + " != " + e->type()->dump());
 		}
 	}
 	const string name;

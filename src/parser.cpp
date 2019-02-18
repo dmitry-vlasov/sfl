@@ -70,7 +70,7 @@ struct Context {
 	void addDecl(const string& name, Type* type) {
 		if (Type* tp = findType(name)) {
 			if (!type->equal(tp)) {
-				throw Error("variable " + name + " is declared with different type: " + type->dump() + ", original type was: " + tp->dump());
+				throw CompileError("variable " + name + " is declared with different type: " + type->dump() + ", original type was: " + tp->dump());
 			}
 		} else {
 			types.back()[name] = type;
@@ -78,7 +78,7 @@ struct Context {
 	}
 	void newDecl(const string& name, Type* type) {
 		if (Type* tp = findType(name)) {
-			throw Error("variable " + name + " is already declared");
+			throw CompileError("variable " + name + " is already declared");
 		} else {
 			types.back()[name] = type;
 		}
@@ -88,7 +88,7 @@ struct Context {
 			return type;
 		} else {
 			//return nullptr;
-			throw Error("variable " + name + " is not typed");
+			throw CompileError("variable " + name + " is not typed");
 		}
 	}
 	Type* findType(const string& name) {
@@ -109,7 +109,7 @@ std::function<T* (const peg::SemanticValues&)> wrap_error(std::function<T* (cons
 	return [f](const peg::SemanticValues& sv) {
 		try {
 			return f(sv);
-		} catch (Error& err) {
+		} catch (CompileError& err) {
 			err.line = sv.line_info().first;
 			err.col = sv.line_info().second;
 			throw err;
@@ -122,7 +122,7 @@ std::function<T* (const peg::SemanticValues&, peg::any& ctx)> wrap_error(std::fu
 	return [f](const peg::SemanticValues& sv, peg::any& ctx) {
 		try {
 			return f(sv, ctx);
-		} catch (Error& err) {
+		} catch (CompileError& err) {
 			err.line = sv.line_info().first;
 			err.col = sv.line_info().second;
 			throw err;
@@ -133,7 +133,7 @@ std::function<T* (const peg::SemanticValues&, peg::any& ctx)> wrap_error(std::fu
 peg::parser parser(const string& file) {
 	peg::parser parser(sfl_syntax);
 	if (!parser) {
-		throw Error("Error in SPL grammar");
+		throw CompileError("Error in SPL grammar");
 	}
 	parser["ID"] = [](const peg::SemanticValues& sv) {
 		return sv.token();
@@ -159,7 +159,7 @@ peg::parser parser(const string& file) {
 		case 0: return static_cast<Type*>(sv[0].get<Int*>());
 		case 1: return static_cast<Type*>(sv[0].get<Array*>());
 		case 2: return static_cast<Type*>(sv[0].get<Func*>());
-		default: throw Error("impossible choice in TYPE");
+		default: throw CompileError("impossible choice in TYPE");
 		};
 	};
 	parser["EX_INT"] = wrap_error<IntConst>([](const peg::SemanticValues& sv) {
@@ -175,7 +175,7 @@ peg::parser parser(const string& file) {
 		case 2:  return BinOp::SUB;
 		case 3:  return BinOp::DIV;
 		case 4:  return BinOp::RES;
-		default: throw Error("impossible choice in BINARY_OP");
+		default: throw CompileError("impossible choice in BINARY_OP");
 		}
 	};
 	parser["EX_UNARY"] = wrap_error<UnOp>([](const peg::SemanticValues& sv) {
@@ -240,7 +240,7 @@ peg::parser parser(const string& file) {
 		case 6:  return static_cast<Expr*>(sv[0].get<FunCall*>());
 		case 7:  return static_cast<Expr*>(sv[0].get<Lambda*>());
 		case 8:  return static_cast<Expr*>(sv[0].get<VarAccess*>());
-		default: throw Error("impossible choice in EXPR");
+		default: throw CompileError("impossible choice in EXPR");
 		}
 	};
 	parser["COND"] = wrap_error<Cond>([](const peg::SemanticValues& sv) {
@@ -253,7 +253,7 @@ peg::parser parser(const string& file) {
 		case 2:  return Cond::LESS;
 		case 3:  return Cond::GREAT;
 		case 4:  return Cond::EQ;
-		default: throw Error("impossible choice in COND_OP");
+		default: throw CompileError("impossible choice in COND_OP");
 		}
 	};
 	parser["STAT_WHILE"] = wrap_error<While>([](const peg::SemanticValues& sv) {
@@ -274,7 +274,7 @@ peg::parser parser(const string& file) {
 			ctx.get<Context*>()->addDecl(name, type);
 			return new Assign(name, sv[2].get<Expr*>(), type);
 		}
-		default: throw Error("impossible choice in STAT_ASSIGN");
+		default: throw CompileError("impossible choice in STAT_ASSIGN");
 		}
 	});
 	parser["STAT_SEQ"].enter = [](const char* s, size_t n, peg::any& ctx) {
@@ -298,7 +298,7 @@ peg::parser parser(const string& file) {
 		case 3:  return static_cast<Statement*>(sv[0].get<While*>());
 		case 4:  return static_cast<Statement*>(sv[0].get<Print*>());
 		case 5:  return static_cast<Statement*>(sv[0].get<StatExpr*>());
-		default: throw Error("impossible choice in STATEMENT");
+		default: throw CompileError("impossible choice in STATEMENT");
 		}
 	};
 	parser["SOURCE"].enter = [](const char* s, size_t n, peg::any& ctx) {
@@ -309,7 +309,7 @@ peg::parser parser(const string& file) {
 		return new Prog(new Lambda(sv[0].get<Seq*>(), {new VarDecl("init", new Array(new Int()))}));
 	});
 	parser.log = [](size_t line, size_t col, const std::string& msg) {
-		throw Error(msg, pair<int, int>(line, col));
+		throw CompileError(msg, pair<int, int>(line, col));
 	};
 	return parser;
 }
@@ -320,14 +320,14 @@ Prog* parse(const string& file, const string& src) {
 	peg::any ctx(context.get());
 	try {
 		if (!parser(file).parse<Prog*>(src.c_str(), ctx, ret)) {
-			throw Error("parsing of " + file + " failed");
+			throw CompileError("parsing of " + file + " failed");
 		}
-	} catch (Error& err) {
+	} catch (CompileError& err) {
 		err.file = file;
 		throw err;
 	}
 	if (!context->empty()) {
-		throw Error("type stack is not empty, " + file + " failed");
+		throw CompileError("type stack is not empty, " + file + " failed");
 	}
 	return ret;
 }
