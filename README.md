@@ -1,5 +1,5 @@
 # sfl
-Simple Functional Language - for compiler learning purpose.
+Simple Functional Language - for teaching of compiler design.
 
 Dependencies: cmake, c++ compiler (g++, clang, etc.)
 
