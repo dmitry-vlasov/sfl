@@ -303,6 +303,7 @@ peg::parser parser(const string& file) {
 	};
 	parser["SOURCE"].enter = [](const char* s, size_t n, peg::any& ctx) {
 		ctx.get<Context*>()->push();
+		ctx.get<Context*>()->newDecl("init", new Array(new Int));
 	};
 	parser["SOURCE"] = wrap_error<Prog>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		ctx.get<Context*>()->pop();

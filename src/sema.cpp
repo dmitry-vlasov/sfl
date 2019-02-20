@@ -22,6 +22,16 @@ string FuncValue::dump() const {
 	return lambda->dump();
 }
 
+bool FuncValue::equal(const Value* v) const {
+	if (const FuncValue* fv = dynamic_cast<const FuncValue*>(v)) {
+		return lambda == fv->lambda && closure.equal(fv->closure);
+	} else if (const FuncRef* fr = dynamic_cast<const FuncRef*>(v)) {
+		return equal(fr->func());
+	} else {
+		return false;
+	}
+}
+
 void Prog::run(const vector<int>& input) {
 	vector<Value*> args;
 	for (int x : input) {
@@ -31,11 +41,11 @@ void Prog::run(const vector<int>& input) {
 	arr.emplace_back(new ArrayValue(args));
 	FuncValue func(lambda.get());
 	unique_ptr<Value> ret(func.call(arr));
-	if (ret) {
+	/*if (ret) {
 		cout << ret->dump() << endl;
 	} else {
 		cout << "nullptr" << endl;
-	}
+	}*/
 }
 
 }

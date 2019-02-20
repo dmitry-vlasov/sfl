@@ -336,12 +336,18 @@ struct FunCall : public Expr {
 		return ret;
 	}
 	Value* eval(State& state) const override {
-		unique_ptr<FuncValue> funVal(dynamic_cast<FuncValue*>(fun->eval(state)));
 		vector<unique_ptr<Value>> argVals;
 		for (const auto& arg : args) {
 			argVals.emplace_back(arg->eval(state));
 		}
-		return funVal->call(argVals);
+		Value* val = fun->eval(state);
+		if (FuncValue* fv = dynamic_cast<FuncValue*>(val)) {
+			return fv->call(argVals);
+		} else if (FuncRef* fr = dynamic_cast<FuncRef*>(val)) {
+			return fr->func()->call(argVals);
+		} else {
+			throw RuntimeError("call to non-function: " + val->dump());
+		}
 	}
 };
 
@@ -434,7 +440,7 @@ struct Cond {
 			case LESSEQ:  return lhsInt <= rhsInt;
 			case GREAT:   return lhsInt > rhsInt;
 			case GREATEQ: return lhsInt >= rhsInt;
-			case EQ:      return lhsInt = rhsInt;
+			case EQ:      return lhsInt == rhsInt;
 			}
 			return false;
 		} else {
@@ -529,6 +535,9 @@ struct Assign : public Statement {
 	}
 	Value* eval(State& state) const override {
 		Value* val = expr->eval(state);
+		if (FuncValue* func = dynamic_cast<FuncValue*>(val)) {
+			func->closure.set(name, new FuncRef(func));
+		}
 		state.set(name, val->clone());
 		return val;
 	}

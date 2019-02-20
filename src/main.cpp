@@ -26,7 +26,8 @@ int main(int argc, char **argv) {
 	try {
 		unique_ptr<Prog> prog(parse(file, src));
 		cout << prog->dump() << endl;
-		cout << "free vars: ";
+		cout << "-----------" << endl;
+		/*cout << "free vars: ";
 		for (auto v : prog->freeVars()) {
 			cout << v << ", ";
 		}
@@ -36,7 +37,7 @@ int main(int argc, char **argv) {
 		for (auto v : prog->lambda->closureVars) {
 			cout << v << ", ";
 		}
-		cout << endl;
+		cout << endl;*/
 
 		vector<int> input;
 		for (int i = 2; i < argc; ++ i) {

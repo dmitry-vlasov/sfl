@@ -51,6 +51,13 @@ struct State {
 		}
 		return true;
 	}
+	string dump() const {
+		string ret;
+		for (const auto& p : state) {
+			ret += p.first + " -> " + p.second->dump() + "\n";
+		}
+		return ret;
+	}
 private:
 	Value* find(const string& n) const {
 		auto i = state.find(n);
@@ -116,13 +123,29 @@ struct FuncValue : public Value {
 		return new FuncValue(lambda, closure);
 	}
 	Value* call(const vector<unique_ptr<Value>>& args) const;
+	bool equal(const Value* v) const override;
+};
+
+struct FuncRef : public Value {
+	FuncRef(FuncValue* r) : ref(r) { }
+	string dump() const override { return ref->dump(); }
+	Value* clone() const override { return new FuncRef(ref); }
+	Value* call(const vector<unique_ptr<Value>>& args) const {
+		return ref->call(args);
+	}
 	bool equal(const Value* v) const override {
 		if (const FuncValue* fv = dynamic_cast<const FuncValue*>(v)) {
-			return lambda == fv->lambda && closure.equal(fv->closure);
+			return func()->equal(v);
+		} else if (const FuncRef* fr = dynamic_cast<const FuncRef*>(v)) {
+			return func()->equal(fr->func());
 		} else {
 			return false;
 		}
 	}
+	FuncValue* func() { return ref; }
+	const FuncValue* func() const { return ref; }
+private:
+	FuncValue* ref;
 };
 
 }
