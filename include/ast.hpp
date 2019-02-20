@@ -22,28 +22,28 @@ struct Type {
 	virtual Type* clone() const = 0;
 };
 
-struct Int : public Type {
+struct IntType : public Type {
 	string dump() const override { return "int"; }
-	bool equal(const Type* t) const override { return dynamic_cast<const Int*>(t); }
-	Type* clone() const override { return new Int(); }
+	bool equal(const Type* t) const override { return dynamic_cast<const IntType*>(t); }
+	Type* clone() const override { return new IntType(); }
 };
 
-struct Array : public Type {
-	Array(Type* t) : type(t) { }
+struct ArrayType : public Type {
+	ArrayType(Type* t) : type(t) { }
 	const unique_ptr<Type> type;
 	string dump() const override { return "[" + type->dump() + "]"; }
 	bool equal(const Type* t) const override {
-		if (const Array* a = dynamic_cast<const Array*>(t)) {
+		if (const ArrayType* a = dynamic_cast<const ArrayType*>(t)) {
 			return type->equal(a->type.get());
 		} else {
 			return false;
 		}
 	}
-	Type* clone() const override { return new Array(type->clone()); }
+	Type* clone() const override { return new ArrayType(type->clone()); }
 };
 
-struct Func : public Type {
-	Func(Type* v, const vector<Type*>& a = vector<Type*>()) : val(v) {
+struct FuncType : public Type {
+	FuncType(Type* v, const vector<Type*>& a = vector<Type*>()) : val(v) {
 		for (auto t : a) args.emplace_back(t);
 	}
 	vector<unique_ptr<Type>> args;
@@ -53,7 +53,7 @@ struct Func : public Type {
 		return "(" + dumpArray(args) + ") -> " + val->dump();
 	}
 	bool equal(const Type* t) const override {
-		if (const Func* f = dynamic_cast<const Func*>(t)) {
+		if (const FuncType* f = dynamic_cast<const FuncType*>(t)) {
 			if (args.size() != f->args.size() || !val->equal(f->val.get())) {
 				return false;
 			}
@@ -68,7 +68,7 @@ struct Func : public Type {
 		}
 	}
 	Type* clone() const override {
-		return new Func(
+		return new FuncType(
 			val->clone(),
 			accumulate(
 				args.begin(),
@@ -91,7 +91,7 @@ struct Expr {
 struct IntConst : public Expr {
 	IntConst(int v) : val(v) { }
 	int val;
-	const Type* type() const override { static Int tp; return &tp; }
+	const Type* type() const override { static IntType tp; return &tp; }
 	string dump() const override { return to_string(val); }
 	set<string> freeVars() const override { return set<string>(); }
 	Value* eval(State&) const override { return new IntValue(val); }
@@ -105,12 +105,12 @@ struct BinOp : public Expr {
 			if (!lhs->type()->equal(rhs->type())) {
 				throw CompileError("binary operation " + dumpOp(op) + " operand types must be equal");
 			}
-			if (dynamic_cast<const Func*>(lhs->type())) {
+			if (dynamic_cast<const FuncType*>(lhs->type())) {
 				throw CompileError("no binary operations on functions are allowed");
 			}
 			break;
 		default:
-			if (!dynamic_cast<const Int*>(lhs->type()) || !dynamic_cast<const Int*>(rhs->type())) {
+			if (!dynamic_cast<const IntType*>(lhs->type()) || !dynamic_cast<const IntType*>(rhs->type())) {
 				throw CompileError("binary operation " + dumpOp(op) + " operand types must be integer");
 			}
 		}
@@ -140,7 +140,7 @@ struct BinOp : public Expr {
 	Value* eval(State& state) const override {
 		unique_ptr<Value> lhsVal(lhs->eval(state));
 		unique_ptr<Value> rhsVal(rhs->eval(state));
-		if (dynamic_cast<const Int*>(type())) {
+		if (dynamic_cast<const IntType*>(type())) {
 			int lhsInt = dynamic_cast<IntValue*>(lhsVal.get())->val;
 			int rhsInt = dynamic_cast<IntValue*>(rhsVal.get())->val;
 			int ret = 0;
@@ -152,7 +152,7 @@ struct BinOp : public Expr {
 			case RES:  return new IntValue(lhsInt % rhsInt);
 			default: throw RuntimeError("illegal binary operator");
 			}
-		} else if (dynamic_cast<const Array*>(type())) {
+		} else if (dynamic_cast<const ArrayType*>(type())) {
 			if (op == PLUS) {
 				ArrayValue* lhsArr = dynamic_cast<ArrayValue*>(lhsVal.get());
 				ArrayValue* rhsArr = dynamic_cast<ArrayValue*>(rhsVal.get());
@@ -179,7 +179,7 @@ struct UnOp : public Expr {
 	}
 	const unique_ptr<Expr> expr;
 	const Kind op;
-	const Type* type() const override { static Int tp; return &tp; }
+	const Type* type() const override { static IntType tp; return &tp; }
 	string dump() const override {
 		return "-" + expr->dump();
 	}
@@ -188,7 +188,7 @@ struct UnOp : public Expr {
 	}
 	Value* eval(State& state) const override {
 		unique_ptr<Value> val(expr->eval(state));
-		if (dynamic_cast<const Int*>(type())) {
+		if (dynamic_cast<const IntType*>(type())) {
 			int valInt = dynamic_cast<IntValue*>(val.get())->val;
 			int ret = 0;
 			switch (op) {
@@ -217,17 +217,17 @@ struct VarAccess : public Expr {
 
 struct ArrayAccess : public Expr {
 	ArrayAccess(Expr* a, Expr* i) : arr(a), ind(i) {
-		if (!dynamic_cast<const Array*>(arr->type())) {
+		if (!dynamic_cast<const ArrayType*>(arr->type())) {
 			throw CompileError("Array expression is needed");
 		}
-		if (!dynamic_cast<const Int*>(ind->type())) {
+		if (!dynamic_cast<const IntType*>(ind->type())) {
 			throw CompileError("Array index expression must have int type");
 		}
 	}
 	const unique_ptr<Expr> arr;
 	const unique_ptr<Expr> ind;
 	const Type* type() const override {
-		return dynamic_cast<const Array*>(arr->type())->type.get();
+		return dynamic_cast<const ArrayType*>(arr->type())->type.get();
 	}
 	string dump() const override {
 		return "[" + arr->dump() + "[" + ind->dump() + "]]";
@@ -247,12 +247,12 @@ struct ArrayAccess : public Expr {
 };
 
 struct ArrayMake : public Expr {
-	ArrayMake(vector<Expr*> es) {
+	ArrayMake(const vector<Expr*>& es) {
 		if (!es.size()) {
 			throw CompileError("Cannot create empty array because it's type is unknown");
 		}
 		const Type* elementType = es[0]->type();
-		tp.reset(new Array(elementType->clone()));
+		tp.reset(new ArrayType(elementType->clone()));
 		for (Expr* e : es) {
 			if (!e->type()->equal(elementType)) {
 				throw CompileError("All elements of an array must be of the same type");
@@ -284,13 +284,13 @@ struct ArrayMake : public Expr {
 
 struct ArrayLen : public Expr {
 	ArrayLen(Expr* a) : arr(a) {
-		if (!dynamic_cast<const Array*>(a->type())) {
+		if (!dynamic_cast<const ArrayType*>(a->type())) {
 			throw CompileError("Array length argument must be an array");
 		}
 	}
 	unique_ptr<Expr> arr;
 	const Type* type() const override {
-		static Int tp; return &tp;
+		static IntType tp; return &tp;
 	}
 	string dump() const override {
 		return "|" + arr->dump() + "|";
@@ -306,7 +306,7 @@ struct ArrayLen : public Expr {
 
 struct FunCall : public Expr {
 	FunCall(Expr* f, const vector<Expr*>& ars = vector<Expr*>()) : fun(f) {
-		const Func* fun_type = dynamic_cast<const Func*>(f->type());
+		const FuncType* fun_type = dynamic_cast<const FuncType*>(f->type());
 		if (!fun_type) {
 			throw CompileError("Function expression is needed");
 		}
@@ -323,7 +323,7 @@ struct FunCall : public Expr {
 	const unique_ptr<Expr> fun;
 	vector<unique_ptr<Expr>> args;
 	const Type* type() const override {
-		return dynamic_cast<const Func*>(fun->type())->val.get();
+		return dynamic_cast<const FuncType*>(fun->type())->val.get();
 	}
 	string dump() const override {
 		return "(" + fun->dump() + "(" + dumpArray(args) + "))";
@@ -340,10 +340,10 @@ struct FunCall : public Expr {
 		for (const auto& arg : args) {
 			argVals.emplace_back(arg->eval(state));
 		}
-		Value* val = fun->eval(state);
-		if (FuncValue* fv = dynamic_cast<FuncValue*>(val)) {
+		unique_ptr<Value> val(fun->eval(state));
+		if (FuncValue* fv = dynamic_cast<FuncValue*>(val.get())) {
 			return fv->call(argVals);
-		} else if (FuncRef* fr = dynamic_cast<FuncRef*>(val)) {
+		} else if (FuncRef* fr = dynamic_cast<FuncRef*>(val.get())) {
 			return fr->func()->call(argVals);
 		} else {
 			throw RuntimeError("call to non-function: " + val->dump());
@@ -405,7 +405,7 @@ struct Cond {
 			}
 			break;
 		default:
-			if (!dynamic_cast<const Int*>(lhs->type()) || !dynamic_cast<const Int*>(rhs->type())) {
+			if (!dynamic_cast<const IntType*>(lhs->type()) || !dynamic_cast<const IntType*>(rhs->type())) {
 				throw CompileError("when comparing with " + dumpOp(op) + " operands must have int type");
 			}
 		}
@@ -432,7 +432,7 @@ struct Cond {
 	bool eval(State& state) const {
 		unique_ptr<Value> lhsVal(lhs->eval(state));
 		unique_ptr<Value> rhsVal(rhs->eval(state));
-		if (dynamic_cast<const Int*>(lhs->type())) {
+		if (dynamic_cast<const IntType*>(lhs->type())) {
 			int lhsInt = dynamic_cast<IntValue*>(lhsVal.get())->val;
 			int rhsInt = dynamic_cast<IntValue*>(rhsVal.get())->val;
 			switch (op) {
@@ -473,11 +473,11 @@ struct While : public Statement {
 		return body->declVars();
 	}
 	Value* eval(State& state) const override {
-		Value* ret = nullptr;
+		unique_ptr<Value> ret;
 		while (cond->eval(state)) {
-			ret = body->eval(state);
+			ret.reset(body->eval(state));
 		}
-		return ret;
+		return ret.release();
 	}
 };
 
@@ -577,11 +577,11 @@ struct Seq : public Statement{
 		return ret;
 	}
 	Value* eval(State& state) const override {
-		Value* val = nullptr;
+		unique_ptr<Value> val;
 		for (const auto& s : seq) {
-			val = s->eval(state);
+			val.reset(s->eval(state));
 		}
-		return val;
+		return val.release();
 	}
 };
 
@@ -631,7 +631,7 @@ struct Prog {
 inline Lambda::Lambda(Statement* b, const vector<VarDecl*>& a) :
 	args(a),
 	body(b),
-	tp(new Func(
+	tp(new FuncType(
 		body->type()->clone(),
 		accumulate(
 			args.decls.begin(),

@@ -41,11 +41,11 @@ void Prog::run(const vector<int>& input) {
 	arr.emplace_back(new ArrayValue(args));
 	FuncValue func(lambda.get());
 	unique_ptr<Value> ret(func.call(arr));
-	/*if (ret) {
+	if (ret) {
 		cout << ret->dump() << endl;
 	} else {
 		cout << "nullptr" << endl;
-	}*/
+	}
 }
 
 }

@@ -53,16 +53,12 @@ const char* sfl_syntax =
 		%whitespace <- [ \t\r\n]*  
 	)";
 
-inline string line_col(pair<int, int> info) {
-	return string("line: ") + to_string(info.first) + ", col: " + to_string(info.second);
-}
-
 struct Context {
 	bool empty() const {
 		return types.empty();
 	}
 	void push() {
-		types.push_back(map<string, Type*>());
+		types.push_back(map<string, unique_ptr<Type>>());
 	}
 	void pop() {
 		types.pop_back();
@@ -73,21 +69,20 @@ struct Context {
 				throw CompileError("variable " + name + " is declared with different type: " + type->dump() + ", original type was: " + tp->dump());
 			}
 		} else {
-			types.back()[name] = type;
+			types.back()[name].reset(type);
 		}
 	}
 	void newDecl(const string& name, Type* type) {
 		if (Type* tp = findType(name)) {
 			throw CompileError("variable " + name + " is already declared");
 		} else {
-			types.back()[name] = type;
+			types.back()[name].reset(type);
 		}
 	}
 	Type* getType(const string& name) {
 		if (Type* type = findType(name)) {
 			return type;
 		} else {
-			//return nullptr;
 			throw CompileError("variable " + name + " is not typed");
 		}
 	}
@@ -95,13 +90,13 @@ struct Context {
 		for (const auto& m : types) {
 			auto x = m.find(name);
 			if (x != m.end()) {
-				return x->second;
+				return x->second.get();
 			}
 		}
 		return nullptr;
 	}
 private:
-	vector<map<string, Type*>> types;
+	vector<map<string, unique_ptr<Type>>> types;
 };
 
 template<class T>
@@ -139,26 +134,26 @@ peg::parser parser(const string& file) {
 		return sv.token();
 	};
 	parser["TP_INT"] = [](const peg::SemanticValues& sv) {
-		return new Int();
+		return new IntType();
 	};
-	parser["TP_ARRAY"] = wrap_error<Array>([](const peg::SemanticValues& sv) {
-			return new Array(sv[0].get<Type*>());
+	parser["TP_ARRAY"] = wrap_error<ArrayType>([](const peg::SemanticValues& sv) {
+			return new ArrayType(sv[0].get<Type*>());
 	});
 	parser["TP_ARGS"] = [](const peg::SemanticValues& sv) {
 		return sv.transform<Type*>();
 	};
-	parser["TP_FUNC"] = wrap_error<Func>([](const peg::SemanticValues& sv) {
+	parser["TP_FUNC"] = wrap_error<FuncType>([](const peg::SemanticValues& sv) {
 		if (sv.size() == 1) {
-			return new Func(sv[0].get<Type*>());
+			return new FuncType(sv[0].get<Type*>());
 		} else {
-			return new Func(sv[1].get<Type*>(), sv[0].get<vector<Type*>>());
+			return new FuncType(sv[1].get<Type*>(), sv[0].get<vector<Type*>>());
 		}
 	});
 	parser["TYPE"] = [](const peg::SemanticValues& sv) {
 		switch (sv.choice()) {
-		case 0: return static_cast<Type*>(sv[0].get<Int*>());
-		case 1: return static_cast<Type*>(sv[0].get<Array*>());
-		case 2: return static_cast<Type*>(sv[0].get<Func*>());
+		case 0: return static_cast<Type*>(sv[0].get<IntType*>());
+		case 1: return static_cast<Type*>(sv[0].get<ArrayType*>());
+		case 2: return static_cast<Type*>(sv[0].get<FuncType*>());
 		default: throw CompileError("impossible choice in TYPE");
 		};
 	};
@@ -272,7 +267,7 @@ peg::parser parser(const string& file) {
 		case 1:  {
 			Type* type = sv[1].get<Type*>();
 			ctx.get<Context*>()->addDecl(name, type);
-			return new Assign(name, sv[2].get<Expr*>(), type);
+			return new Assign(name, sv[2].get<Expr*>(), type->clone());
 		}
 		default: throw CompileError("impossible choice in STAT_ASSIGN");
 		}
@@ -303,11 +298,17 @@ peg::parser parser(const string& file) {
 	};
 	parser["SOURCE"].enter = [](const char* s, size_t n, peg::any& ctx) {
 		ctx.get<Context*>()->push();
-		ctx.get<Context*>()->newDecl("init", new Array(new Int));
+		ctx.get<Context*>()->newDecl("init", new ArrayType(new IntType));
 	};
 	parser["SOURCE"] = wrap_error<Prog>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		Prog* prog = new Prog(
+			 new Lambda(
+				sv[0].get<Seq*>(),
+				{new VarDecl("init", ctx.get<Context*>()->getType("init"))}
+			)
+		);
 		ctx.get<Context*>()->pop();
-		return new Prog(new Lambda(sv[0].get<Seq*>(), {new VarDecl("init", new Array(new Int()))}));
+		return prog;
 	});
 	parser.log = [](size_t line, size_t col, const std::string& msg) {
 		throw CompileError(msg, pair<int, int>(line, col));
