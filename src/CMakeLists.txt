@@ -5,6 +5,6 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../peglib
 )
 
-add_executable(spl sema.cpp parser.cpp main.cpp)
+add_executable(sfl sema.cpp parser.cpp main.cpp)
 
-target_link_libraries(spl stdc++fs)
+target_link_libraries(sfl stdc++fs)

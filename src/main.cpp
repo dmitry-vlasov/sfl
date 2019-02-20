@@ -8,7 +8,7 @@ using namespace sfl;
 
 int main(int argc, char **argv) {
 	if (argc <= 1) {
-		cout << "Usage: sfl <program>" << endl;
+		cout << "Usage: sfl <program> <int arg 1> ... <int arg n>" << endl;
 		return 0;
 	}
 	string file(argv[1]);

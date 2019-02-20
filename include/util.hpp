@@ -12,8 +12,8 @@ namespace sfl {
 
 using namespace std;
 
-struct Error : public exception {
-	Error(const string& m, pair<int, int> lc = pair<int, int>(-1, -1)) :
+struct CompileError : public exception {
+	CompileError(const string& m, pair<int, int> lc = pair<int, int>(-1, -1)) :
 	msg(m), line(lc.first), col(lc.second) { }
 	string msg;
 	string file;
