@@ -6,14 +6,17 @@
 using namespace std;
 using namespace sfl;
 
+void print_usage() {
+	cout << "Usage: sfl [--show-ast] <program> <int arg 1> ... <int arg n>" << endl;
+	exit(0);
+}
+
 int main(int argc, char **argv) {
-	if (argc <= 1) {
-		cout << "Usage: sfl [--show-ast] <program> <int arg 1> ... <int arg n>" << endl;
-		return 0;
-	}
+	if (argc <= 1) print_usage();
 	int c = 1;
 	bool show_ast = false;
-	if ("--show-ast"  == string(argv[c])) { ++c; show_ast = true; }
+	if ("--show-ast" == string(argv[c])) { ++c; show_ast = true; }
+	if (c == argc) print_usage();
 	string file(argv[c++]);
 	ifstream in(file);
 	if (!in) {
