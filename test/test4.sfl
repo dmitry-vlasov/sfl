@@ -6,10 +6,11 @@
     f : (int) -> int = /\ x : int -> {
 			b : int = 2;
 			c : () -> int = /\ -> 3;
-			g : (int, () -> int) -> int = /\ y : int, h : () -> int -> ((y + (b + (h()))) + (c()));
+			g : (int, () -> int) -> int = /\ y : int, h : () -> int -> (((y + (b + (h()))) + (c())) + x);
 			(g(
 					(a + x),
 					c
 			))
 		};
-	(f(1))
+	print (f(1));
+	(f(2))
