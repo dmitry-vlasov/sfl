@@ -655,7 +655,7 @@ inline string Lambda::dump() const {
 }
 
 inline set<string> Lambda::freeVars() const {
-	return setminus(body->freeVars(), args.boundVars());
+	return setminus(setminus(body->freeVars(), args.boundVars()), body->declVars());
 }
 
 inline Value* Lambda::eval(State& state) const {
