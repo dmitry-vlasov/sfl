@@ -537,7 +537,9 @@ struct Assign : public Statement {
 		return set<string>({decl->name});
 	}
 	Value* eval(State& state) const override {
-		state.set(decl->name, defaultExpr->eval(state));
+		if (!state.find(decl->name)) {
+			state.set(decl->name, defaultExpr->eval(state));
+		}
 		Value* val = expr->eval(state);
 		if (FuncValue* func = dynamic_cast<FuncValue*>(val)) {
 			func->closure.set(decl->name, new FuncRef(func));

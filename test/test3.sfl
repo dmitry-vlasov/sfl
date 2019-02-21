@@ -1,0 +1,23 @@
+  
+
+    // Fibonacci sequence
+
+    fib_seq : [int] = [0, 1];
+    c : int = 2;
+    while c < 20 do {
+    	next : int = ([fib_seq[(c - 1)]] + [fib_seq[(c - 2)]]);
+    	fib_seq = (fib_seq + [next]);
+    	c = (c + 1)
+    };
+   
+	fib_func : (int) -> int = /\ n : int -> 
+		if n = 0 then 0 else
+			if n = 1 then 1 else
+				(
+					(fib_func( (n - 1) )) + 
+					(fib_func( (n - 2) ))
+				); 
+	
+	print (fib_func(9));
+	print [fib_seq[9]];
+	fib_seq

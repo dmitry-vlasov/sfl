@@ -37,6 +37,14 @@ struct State {
 			throw RuntimeError("unknown variable: " + n);
 		}
 	}
+	Value* find(const string& n) const {
+		auto i = state.find(n);
+		if (i != state.end()) {
+			return i->second.get();
+		} else {
+			return nullptr;
+		}
+	}
 	bool equal(const State& s) const {
 		if (state.size() != s.state.size()) return false;
 		for (const auto& p : s.state) {
@@ -59,14 +67,6 @@ struct State {
 		return ret;
 	}
 private:
-	Value* find(const string& n) const {
-		auto i = state.find(n);
-		if (i != state.end()) {
-			return i->second.get();
-		} else {
-			return nullptr;
-		}
-	}
 	map<string, unique_ptr<Value>> state;
 };
 
