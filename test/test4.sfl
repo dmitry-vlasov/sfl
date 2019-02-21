@@ -1,0 +1,16 @@
+  
+
+    // Test on closure
+
+    a : int = 1;
+    f : (int) -> int = /\ x : int -> {
+			b : int = 2;
+			c : () -> int = /\ -> 3;
+			g : (int, int, () -> int) -> int = /\ y : int, z : int, h : () -> int -> (y + (z + (h())));
+			(g(
+					(a + x), 
+					(b + (c())), 
+					c
+			))
+		};
+	(f(1))
