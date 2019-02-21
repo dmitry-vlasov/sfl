@@ -6,7 +6,7 @@
     f : (int) -> int = /\ x : int -> {
 			b : int = 2;
 			c : () -> int = /\ -> 3;
-			g : (int, () -> int) -> int = /\ y : int, h : () -> int -> (y + (b + (h())));
+			g : (int, () -> int) -> int = /\ y : int, h : () -> int -> ((y + (b + (h()))) + (c()));
 			(g(
 					(a + x),
 					c

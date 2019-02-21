@@ -29,10 +29,10 @@ const char* sfl_syntax =
 		BINARY_OP    <- '+' / '*' / '-' / '/' / '%'
 		EX_UNARY     <- UNARY_OP EXPR
 		UNARY_OP     <- '-'
-		EX_ARR_ACCESS<- '[' EXPR '[' EXPR ']]'
+		EX_ARR_ACCESS<- '[' EXPR '[' EXPR ']' ']'
 		EX_ARR_MAKE  <- '[' EXPR (',' EXPR )* ']'
 		EX_ARR_LEN   <- '|' EXPR '|'
-		EX_FUN_CALL  <- '(' EXPR '(' CALL_ARGS ? '))'
+		EX_FUN_CALL  <- '(' EXPR '(' CALL_ARGS ? ')' ')'
 		CALL_ARGS    <- EXPR (',' EXPR)*
 		EX_LAMBDA    <- '/\\' LAMBDA_ARGS ? '->' STATEMENT
 		LAMBDA_ARGS  <- VAR_DECL (',' VAR_DECL)*
