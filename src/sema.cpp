@@ -1,3 +1,4 @@
+#include <cassert>
 #include "ast.hpp"
 
 namespace sfl {
@@ -41,11 +42,8 @@ void Prog::run(const vector<int>& input) {
 	arr.emplace_back(new ArrayValue(args));
 	FuncValue func(lambda.get());
 	unique_ptr<Value> ret(func.call(arr));
-	if (ret) {
-		cout << ret->dump() << endl;
-	} else {
-		cout << "nullptr" << endl;
-	}
+	assert(ret && "any program must return non-null value");
+	cout << ret->dump() << endl;
 }
 
 }

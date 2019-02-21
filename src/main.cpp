@@ -8,10 +8,13 @@ using namespace sfl;
 
 int main(int argc, char **argv) {
 	if (argc <= 1) {
-		cout << "Usage: sfl <program> <int arg 1> ... <int arg n>" << endl;
+		cout << "Usage: sfl [--show-ast] <program> <int arg 1> ... <int arg n>" << endl;
 		return 0;
 	}
-	string file(argv[1]);
+	int c = 1;
+	bool show_ast = false;
+	if ("--show-ast"  == string(argv[c])) { ++c; show_ast = true; }
+	string file(argv[c++]);
 	ifstream in(file);
 	if (!in) {
 		cout << "cannot read " << file << endl;
@@ -25,26 +28,15 @@ int main(int argc, char **argv) {
 	in.close();
 	try {
 		unique_ptr<Prog> prog(parse(file, src));
-		cout << prog->dump() << endl;
-		cout << "-----------" << endl;
-		/*cout << "free vars: ";
-		for (auto v : prog->freeVars()) {
-			cout << v << ", ";
+		if (show_ast) {
+			cout << prog->dump() << endl;
+			cout << "-----------" << endl;
 		}
-		cout << endl;
-
-		cout << "closure vars: ";
-		for (auto v : prog->lambda->closureVars) {
-			cout << v << ", ";
-		}
-		cout << endl;*/
-
 		vector<int> input;
-		for (int i = 2; i < argc; ++ i) {
-			input.push_back(stoi(argv[i]));
+		for (; c < argc; ++ c) {
+			input.push_back(stoi(argv[c]));
 		}
 		prog->run(input);
-		cout << "END" << endl;
 	} catch (exception& err) {
 		cout << err.what() << endl;
 	} catch (...) {
