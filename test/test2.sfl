@@ -1,7 +1,6 @@
   
 
     // Factorial function
-    fact : (int) -> int = /\ x : int -> 2;
     fact : (int) -> int = /\ x : int -> 
     	if x = 0 then 1 else {
     		(x * (fact( (x - 1) )))

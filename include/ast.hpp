@@ -15,17 +15,21 @@ namespace sfl {
 
 using namespace std;
 
+class Expr;
+
 struct Type {
 	virtual ~Type() { }
 	virtual string dump() const = 0;
 	virtual bool equal(const Type*) const = 0;
 	virtual Type* clone() const = 0;
+	virtual Expr* defaultExpr() const = 0;
 };
 
 struct IntType : public Type {
 	string dump() const override { return "int"; }
 	bool equal(const Type* t) const override { return dynamic_cast<const IntType*>(t); }
 	Type* clone() const override { return new IntType(); }
+	Expr* defaultExpr() const override;
 };
 
 struct ArrayType : public Type {
@@ -40,6 +44,7 @@ struct ArrayType : public Type {
 		}
 	}
 	Type* clone() const override { return new ArrayType(type->clone()); }
+	Expr* defaultExpr() const override;
 };
 
 struct FuncType : public Type {
@@ -78,6 +83,7 @@ struct FuncType : public Type {
 			)
 		);
 	}
+	Expr* defaultExpr() const override;
 };
 
 struct Expr {
@@ -202,7 +208,7 @@ struct UnOp : public Expr {
 };
 
 struct VarAccess : public Expr {
-	VarAccess(const string& n, Type* t) : name(n), tp(t->clone()) { }
+	VarAccess(const string& n, const Type* t) : name(n), tp(t->clone()) { }
 	const string name;
 	const unique_ptr<Type> tp;
 	const Type* type() const override { return tp.get(); }
@@ -352,7 +358,7 @@ struct FunCall : public Expr {
 };
 
 struct VarDecl {
-	VarDecl(const string& n, Type* t) : name(n), tp(t->clone()) { }
+	VarDecl(const string& n, const Type* t) : name(n), tp(t->clone()) { }
 	const string name;
 	const unique_ptr<Type> tp;
 	const Type* type() const { return tp.get(); }
@@ -459,9 +465,10 @@ struct Statement {
 };
 
 struct While : public Statement {
-	While(Cond* c, Statement* b) : cond(c), body(b) { }
+	While(Cond* c, Statement* b) : cond(c), body(b), defaultExpr(b->type()->defaultExpr()) { }
 	const unique_ptr<Cond> cond;
 	const unique_ptr<Statement> body;
+	const unique_ptr<Expr> defaultExpr;
 	const Type* type() const override { return body->type(); }
 	string dump() const override {
 		return "while " + cond->dump() + " do\n" + indent(body->dump());
@@ -473,7 +480,7 @@ struct While : public Statement {
 		return body->declVars();
 	}
 	Value* eval(State& state) const override {
-		unique_ptr<Value> ret;
+		unique_ptr<Value> ret(defaultExpr->eval(state));
 		while (cond->eval(state)) {
 			ret.reset(body->eval(state));
 		}
@@ -511,34 +518,31 @@ struct If : public Statement {
 };
 
 struct Assign : public Statement {
-	Assign(const string& n, Expr* e, Type* t) : name(n), expr(e), tp(t) {
-		if (!t->equal(e->type())) {
-			throw CompileError("Type mismatch in assignment: " + t->dump() + " != " + e->type()->dump());
+	Assign(VarDecl* d, Expr* e) : decl(d), expr(e), defaultExpr(e->type()->defaultExpr()) {
+		if (!d->type()->equal(e->type())) {
+			throw CompileError("Type mismatch in assignment: " + d->type()->dump() + " != " + e->type()->dump());
 		}
 	}
-	const string name;
+	unique_ptr<VarDecl> decl;
 	const unique_ptr<Expr> expr;
-	const unique_ptr<Type> tp;
-	const Type* type() const override { return tp.get(); }
+	const unique_ptr<Expr> defaultExpr;
+	const Type* type() const override { return decl->type(); }
 	string dump() const override {
-		if (tp) {
-			return name + " : " + tp->dump() + " = " + expr->dump();
-		} else {
-			return name + " = " + expr->dump();
-		}
+		return decl->dump() + " = " + expr->dump();
 	}
 	set<string> freeVars() const override {
 		return expr->freeVars();
 	}
 	set<string> declVars() const override {
-		return set<string>({name});
+		return set<string>({decl->name});
 	}
 	Value* eval(State& state) const override {
+		state.set(decl->name, defaultExpr->eval(state));
 		Value* val = expr->eval(state);
 		if (FuncValue* func = dynamic_cast<FuncValue*>(val)) {
-			func->closure.set(name, new FuncRef(func));
+			func->closure.set(decl->name, new FuncRef(func));
 		}
-		state.set(name, val->clone());
+		state.set(decl->name, val->clone());
 		return val;
 	}
 };
@@ -660,6 +664,27 @@ inline Value* Lambda::call(State& state) const {
 	return body->eval(state);
 }
 
+inline Expr* IntType::defaultExpr() const {
+	return new IntConst(0);
+}
+
+inline Expr* ArrayType::defaultExpr() const {
+	return new ArrayMake({type->defaultExpr()});
+}
+
+inline Expr* FuncType::defaultExpr() const {
+	return new Lambda(
+		new StatExpr(val->defaultExpr()),
+		accumulate(
+			args.begin(),
+			args.end(),
+			vector<VarDecl*>(),
+			[](vector<VarDecl*>& acc,  const auto& type) {
+				acc.push_back(new VarDecl("_", type.get())); return acc;
+			}
+		)
+	);
+}
 
 Prog* parse(const string& file, const string& src);
 

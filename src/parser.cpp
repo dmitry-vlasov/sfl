@@ -14,7 +14,7 @@ const char* sfl_syntax =
 		SOURCE      <- STAT_SEQ
 		STATEMENT   <- STAT_ASSIGN / STAT_IF / '{' STAT_SEQ '}' / STAT_WHILE / STAT_PRINT /STAT_EXPR
 		STAT_SEQ    <- COMMENT* STATEMENT COMMENT* (';' COMMENT* STATEMENT COMMENT*)* ';' ? COMMENT* 
-		STAT_ASSIGN <- ID '=' EXPR / ID ':' TYPE '=' EXPR
+		STAT_ASSIGN <- ID '=' EXPR / VAR_DECL '=' EXPR
 		STAT_IF     <- 'if' COND 'then' STATEMENT 'else' STATEMENT
 		STAT_WHILE  <- 'while' COND 'do' STATEMENT
 		STAT_PRINT  <- 'print' EXPR
@@ -266,7 +266,7 @@ peg::parser parser(const string& file) {
 	parser["VAR_DECL"] = wrap_error<VarDecl>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		string name = sv[0].get<string>();
 		Type* type = sv[1].get<Type*>();
-		ctx.get<Context*>()->newDecl(name, type);
+		ctx.get<Context*>()->addDecl(name, type);
 		return new VarDecl(name, type);
 	});
 	parser["LAMBDA_ARGS"] = [](const peg::SemanticValues& sv) {
@@ -313,21 +313,19 @@ peg::parser parser(const string& file) {
 		));
 	});
 	parser["STAT_ASSIGN"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
-		string name = sv[0].get<string>();
 		switch (sv.choice()) {
 		case 0:  {
+			string name = sv[0].get<string>();
 			Type* type = ctx.get<Context*>()->getType(name);
-			return static_cast<Statement*>(new Assign(name,
-				ctx.get<Context*>()->use<Expr>(sv[1]),
-				type->clone()
+			return static_cast<Statement*>(new Assign(
+				new VarDecl(name, type->clone()),
+				ctx.get<Context*>()->use<Expr>(sv[1])
 			));
 		}
 		case 1:  {
-			Type* type = sv[1].get<Type*>();
-			ctx.get<Context*>()->addDecl(name, type);
-			return static_cast<Statement*>(new Assign(name,
-				ctx.get<Context*>()->use<Expr>(sv[2]),
-				type->clone()
+			return static_cast<Statement*>(new Assign(
+				sv[0].get<VarDecl*>(),
+				ctx.get<Context*>()->use<Expr>(sv[1])
 			));
 		}
 		default: throw CompileError("impossible choice in STAT_ASSIGN");
