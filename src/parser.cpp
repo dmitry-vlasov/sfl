@@ -54,6 +54,10 @@ const char* sfl_syntax =
 	)";
 
 struct Context {
+	~Context() {
+		for (auto e : unusedExprs) delete e;
+		for (auto s : unusedStats) delete s;
+	}
 	bool empty() const {
 		return types.empty();
 	}
@@ -67,6 +71,8 @@ struct Context {
 		if (Type* tp = findType(name)) {
 			if (!type->equal(tp)) {
 				throw CompileError("variable " + name + " is declared with different type: " + type->dump() + ", original type was: " + tp->dump());
+			} else {
+				types.back()[name].reset(type);
 			}
 		} else {
 			types.back()[name].reset(type);
@@ -95,9 +101,38 @@ struct Context {
 		}
 		return nullptr;
 	}
+	template<class T> void reg(T* t);
+	template<class T> T* use(const peg::any& t);
+	template<class T> vector<T*> useVect(const peg::any& t);
+
 private:
 	vector<map<string, unique_ptr<Type>>> types;
+	set<Expr*> unusedExprs;
+	set<Statement*> unusedStats;
 };
+
+template<> void Context::reg<Expr>(Expr* e) { unusedExprs.insert(e); }
+template<> void Context::reg<Statement>(Statement* s) { unusedStats.insert(s); }
+template<> Expr* Context::use<Expr>(const peg::any& a) {
+	Expr* e = a.get<Expr*>();
+	unusedExprs.erase(e);
+	return e;
+}
+template<> Statement* Context::use<Statement>(const peg::any& a) {
+	Statement* s = a.get<Statement*>();
+	unusedStats.erase(s);
+	return s;
+}
+template<> vector<Expr*> Context::useVect<Expr>(const peg::any& a) {
+	vector<Expr*> ev = a.get<vector<Expr*>>();
+	for (auto e : ev) unusedExprs.erase(e);
+	return ev;
+}
+template<> vector<Statement*> Context::useVect<Statement>(const peg::any& a) {
+	vector<Statement*> sv = a.get<vector<Statement*>>();
+	for (auto s : sv) unusedStats.erase(s);
+	return sv;
+}
 
 template<class T>
 std::function<T* (const peg::SemanticValues&)> wrap_error(std::function<T* (const peg::SemanticValues&)> f) {
@@ -134,34 +169,33 @@ peg::parser parser(const string& file) {
 		return sv.token();
 	};
 	parser["TP_INT"] = [](const peg::SemanticValues& sv) {
-		return new IntType();
+		return static_cast<Type*>(new IntType());
 	};
-	parser["TP_ARRAY"] = wrap_error<ArrayType>([](const peg::SemanticValues& sv) {
-			return new ArrayType(sv[0].get<Type*>());
+	parser["TP_ARRAY"] = wrap_error<Type>([](const peg::SemanticValues& sv) {
+		return static_cast<Type*>(new ArrayType(sv[0].get<Type*>()));
 	});
 	parser["TP_ARGS"] = [](const peg::SemanticValues& sv) {
 		return sv.transform<Type*>();
 	};
-	parser["TP_FUNC"] = wrap_error<FuncType>([](const peg::SemanticValues& sv) {
+	parser["TP_FUNC"] = wrap_error<Type>([](const peg::SemanticValues& sv) {
 		if (sv.size() == 1) {
-			return new FuncType(sv[0].get<Type*>());
+			return static_cast<Type*>(new FuncType(sv[0].get<Type*>()));
 		} else {
-			return new FuncType(sv[1].get<Type*>(), sv[0].get<vector<Type*>>());
+			return static_cast<Type*>(new FuncType(sv[1].get<Type*>(), sv[0].get<vector<Type*>>()));
 		}
 	});
 	parser["TYPE"] = [](const peg::SemanticValues& sv) {
-		switch (sv.choice()) {
-		case 0: return static_cast<Type*>(sv[0].get<IntType*>());
-		case 1: return static_cast<Type*>(sv[0].get<ArrayType*>());
-		case 2: return static_cast<Type*>(sv[0].get<FuncType*>());
-		default: throw CompileError("impossible choice in TYPE");
-		};
+		return sv[0].get<Type*>();
 	};
-	parser["EX_INT"] = wrap_error<IntConst>([](const peg::SemanticValues& sv) {
-		return new IntConst(stoi(sv.token()));
+	parser["EX_INT"] = wrap_error<Expr>([](const peg::SemanticValues& sv) {
+		return static_cast<Expr*>(new IntConst(stoi(sv.token())));
 	});
-	parser["EX_BINARY"] = wrap_error<BinOp>([](const peg::SemanticValues& sv) {
-		return new BinOp(sv[0].get<Expr*>(), sv[2].get<Expr*>(), sv[1].get<BinOp::Kind>());
+	parser["EX_BINARY"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Expr*>(new BinOp(
+			ctx.get<Context*>()->use<Expr>(sv[0]),
+			ctx.get<Context*>()->use<Expr>(sv[2]),
+			sv[1].get<BinOp::Kind>()
+		));
 	});
 	parser["BINARY_OP"] = [](const peg::SemanticValues& sv) {
 		switch (sv.choice()) {
@@ -173,26 +207,41 @@ peg::parser parser(const string& file) {
 		default: throw CompileError("impossible choice in BINARY_OP");
 		}
 	};
-	parser["EX_UNARY"] = wrap_error<UnOp>([](const peg::SemanticValues& sv) {
-		return new UnOp(sv[1].get<Expr*>(), sv[0].get<UnOp::Kind>());
+	parser["EX_UNARY"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Expr*>(new UnOp(
+			ctx.get<Context*>()->use<Expr>(sv[1]),
+			sv[0].get<UnOp::Kind>()
+		));
 	});
 	parser["UNARY_OP"] = [](const peg::SemanticValues& sv) {
 		return UnOp::MINUS;
 	};
-	parser["EX_ARR_ACCESS"] = wrap_error<ArrayAccess>([](const peg::SemanticValues& sv) {
-		return new ArrayAccess(sv[0].get<Expr*>(), sv[1].get<Expr*>());
+	parser["EX_ARR_ACCESS"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Expr*>(new ArrayAccess(
+			ctx.get<Context*>()->use<Expr>(sv[0]),
+			ctx.get<Context*>()->use<Expr>(sv[1])
+		));
 	});
-	parser["EX_ARR_MAKE"] = wrap_error<ArrayMake>([](const peg::SemanticValues& sv) {
-		return new ArrayMake(sv.transform<Expr*>());
+	parser["EX_ARR_MAKE"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Expr*>(new ArrayMake(
+			ctx.get<Context*>()->useVect<Expr>(sv.transform<Expr*>())
+		));
 	});
-	parser["EX_ARR_LEN"] = wrap_error<ArrayLen>([](const peg::SemanticValues& sv) {
-		return new ArrayLen(sv[0].get<Expr*>());
+	parser["EX_ARR_LEN"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Expr*>(new ArrayLen(
+			ctx.get<Context*>()->use<Expr>(sv[0])
+		));
 	});
-	parser["EX_FUN_CALL"] = wrap_error<FunCall>([](const peg::SemanticValues& sv) {
+	parser["EX_FUN_CALL"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		if (sv.size() == 1) {
-			return new FunCall(sv[0].get<Expr*>());
+			return static_cast<Expr*>(new FunCall(
+				ctx.get<Context*>()->use<Expr>(sv[0])
+			));
 		} else {
-			return new FunCall(sv[0].get<Expr*>(), sv[1].get<vector<Expr*>>());
+			return static_cast<Expr*>(new FunCall(
+				ctx.get<Context*>()->use<Expr>(sv[0]),
+				ctx.get<Context*>()->useVect<Expr>(sv[1])
+			));
 		}
 	});
 	parser["CALL_ARGS"] = [](const peg::SemanticValues& sv) {
@@ -201,12 +250,17 @@ peg::parser parser(const string& file) {
 	parser["LAMBDA_ARGS"].enter = [](const char* s, size_t n, peg::any& ctx) {
 		ctx.get<Context*>()->push();
 	};
-	parser["EX_LAMBDA"] = wrap_error<Lambda>([](const peg::SemanticValues& sv, peg::any& ctx) {
+	parser["EX_LAMBDA"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		ctx.get<Context*>()->pop();
 		if (sv.size() == 1) {
-			return new Lambda(sv[0].get<Statement*>());
+			return static_cast<Expr*>(new Lambda(
+				ctx.get<Context*>()->use<Statement>(sv[0])
+			));
 		} else {
-			return new Lambda(sv[1].get<Statement*>(), sv[0].get<vector<VarDecl*>>());
+			return static_cast<Expr*>(new Lambda(
+				ctx.get<Context*>()->use<Statement>(sv[1]),
+				sv[0].get<vector<VarDecl*>>()
+			));
 		}
 	});
 	parser["VAR_DECL"] = wrap_error<VarDecl>([](const peg::SemanticValues& sv, peg::any& ctx) {
@@ -218,28 +272,22 @@ peg::parser parser(const string& file) {
 	parser["LAMBDA_ARGS"] = [](const peg::SemanticValues& sv) {
 		return sv.transform<VarDecl*>();
 	};
-	parser["EX_VAR"] = wrap_error<VarAccess>([](const peg::SemanticValues& sv, peg::any& ctx) {
+	parser["EX_VAR"] = wrap_error<Expr>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		string name = sv[0].get<string>();
 		Type* type = ctx.get<Context*>()->getType(name);
-		return new VarAccess(name, type);
+		return static_cast<Expr*>(new VarAccess(name, type));
 	});
-	// EXPR         <- EX_INT / EX_BINARY / EX_UNARY / EX_ARR_ACCESS  / EX_ARR_MAKE / EX_ARR_LEN / EX_FUN_CALL / EX_LAMBDA / EX_VAR
-	parser["EXPR"] = [](const peg::SemanticValues& sv) {
-		switch (sv.choice()) {
-		case 0:  return static_cast<Expr*>(sv[0].get<IntConst*>());
-		case 1:  return static_cast<Expr*>(sv[0].get<BinOp*>());
-		case 2:  return static_cast<Expr*>(sv[0].get<UnOp*>());
-		case 3:  return static_cast<Expr*>(sv[0].get<ArrayAccess*>());
-		case 4:  return static_cast<Expr*>(sv[0].get<ArrayMake*>());
-		case 5:  return static_cast<Expr*>(sv[0].get<ArrayLen*>());
-		case 6:  return static_cast<Expr*>(sv[0].get<FunCall*>());
-		case 7:  return static_cast<Expr*>(sv[0].get<Lambda*>());
-		case 8:  return static_cast<Expr*>(sv[0].get<VarAccess*>());
-		default: throw CompileError("impossible choice in EXPR");
-		}
+	parser["EXPR"] = [](const peg::SemanticValues& sv, peg::any& ctx) {
+		Expr* e = sv[0].get<Expr*>();
+		ctx.get<Context*>()->reg<Expr>(e);
+		return e;
 	};
-	parser["COND"] = wrap_error<Cond>([](const peg::SemanticValues& sv) {
-		return new Cond(sv[0].get<Expr*>(), sv[2].get<Expr*>(), sv[1].get<Cond::Kind>());
+	parser["COND"] = wrap_error<Cond>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return new Cond(
+			ctx.get<Context*>()->use<Expr>(sv[0]),
+			ctx.get<Context*>()->use<Expr>(sv[2]),
+			sv[1].get<Cond::Kind>()
+		);
 	});
 	parser["COND_OP"] = [](const peg::SemanticValues& sv) {
 		switch (sv.choice()) {
@@ -251,23 +299,36 @@ peg::parser parser(const string& file) {
 		default: throw CompileError("impossible choice in COND_OP");
 		}
 	};
-	parser["STAT_WHILE"] = wrap_error<While>([](const peg::SemanticValues& sv) {
-		return new While(sv[0].get<Cond*>(), sv[1].get<Statement*>());
+	parser["STAT_WHILE"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Statement*>(new While(
+			sv[0].get<Cond*>(),
+			ctx.get<Context*>()->use<Statement>(sv[1])
+		));
 	});
-	parser["STAT_IF"] = wrap_error<If>([](const peg::SemanticValues& sv) {
-		return new If(sv[0].get<Cond*>(), sv[1].get<Statement*>(), sv[2].get<Statement*>());
+	parser["STAT_IF"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Statement*>(new If(
+			sv[0].get<Cond*>(),
+			ctx.get<Context*>()->use<Statement>(sv[1]),
+			ctx.get<Context*>()->use<Statement>(sv[2])
+		));
 	});
-	parser["STAT_ASSIGN"] = wrap_error<Assign>([](const peg::SemanticValues& sv, peg::any& ctx) {
+	parser["STAT_ASSIGN"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		string name = sv[0].get<string>();
 		switch (sv.choice()) {
 		case 0:  {
 			Type* type = ctx.get<Context*>()->getType(name);
-			return new Assign(name, sv[1].get<Expr*>(), type->clone());
+			return static_cast<Statement*>(new Assign(name,
+				ctx.get<Context*>()->use<Expr>(sv[1]),
+				type->clone()
+			));
 		}
 		case 1:  {
 			Type* type = sv[1].get<Type*>();
 			ctx.get<Context*>()->addDecl(name, type);
-			return new Assign(name, sv[2].get<Expr*>(), type->clone());
+			return static_cast<Statement*>(new Assign(name,
+				ctx.get<Context*>()->use<Expr>(sv[2]),
+				type->clone()
+			));
 		}
 		default: throw CompileError("impossible choice in STAT_ASSIGN");
 		}
@@ -275,26 +336,26 @@ peg::parser parser(const string& file) {
 	parser["STAT_SEQ"].enter = [](const char* s, size_t n, peg::any& ctx) {
 		ctx.get<Context*>()->push();
 	};
-	parser["STAT_SEQ"] = wrap_error<Seq>([](const peg::SemanticValues& sv, peg::any& ctx) {
+	parser["STAT_SEQ"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		ctx.get<Context*>()->pop();
-		return new Seq(sv.transform<Statement*>());
+		return static_cast<Statement*>(new Seq(
+			ctx.get<Context*>()->useVect<Statement>(sv.transform<Statement*>())
+		));
 	});
-	parser["STAT_EXPR"] = wrap_error<StatExpr>([](const peg::SemanticValues& sv) {
-		return new StatExpr(sv[0].get<Expr*>());
+	parser["STAT_EXPR"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Statement*>(new StatExpr(
+			ctx.get<Context*>()->use<Expr>(sv[0])
+		));
 	});
-	parser["STAT_PRINT"] = wrap_error<Print>([](const peg::SemanticValues& sv) {
-		return new Print(sv[0].get<Expr*>());
+	parser["STAT_PRINT"] = wrap_error<Statement>([](const peg::SemanticValues& sv, peg::any& ctx) {
+		return static_cast<Statement*>(new Print(
+			ctx.get<Context*>()->use<Expr>(sv[0])
+		));
 	});
-	parser["STATEMENT"] = [](const peg::SemanticValues& sv) {
-		switch (sv.choice()) {
-		case 0:  return static_cast<Statement*>(sv[0].get<Assign*>());
-		case 1:  return static_cast<Statement*>(sv[0].get<If*>());
-		case 2:  return static_cast<Statement*>(sv[0].get<Seq*>());
-		case 3:  return static_cast<Statement*>(sv[0].get<While*>());
-		case 4:  return static_cast<Statement*>(sv[0].get<Print*>());
-		case 5:  return static_cast<Statement*>(sv[0].get<StatExpr*>());
-		default: throw CompileError("impossible choice in STATEMENT");
-		}
+	parser["STATEMENT"] = [](const peg::SemanticValues& sv, peg::any& ctx) {
+		Statement* s = sv[0].get<Statement*>();
+		ctx.get<Context*>()->reg<Statement>(s);
+		return s;
 	};
 	parser["SOURCE"].enter = [](const char* s, size_t n, peg::any& ctx) {
 		ctx.get<Context*>()->push();
@@ -303,7 +364,7 @@ peg::parser parser(const string& file) {
 	parser["SOURCE"] = wrap_error<Prog>([](const peg::SemanticValues& sv, peg::any& ctx) {
 		Prog* prog = new Prog(
 			 new Lambda(
-				sv[0].get<Seq*>(),
+				ctx.get<Context*>()->use<Statement>(sv[0]),
 				{new VarDecl("init", ctx.get<Context*>()->getType("init"))}
 			)
 		);
@@ -318,7 +379,7 @@ peg::parser parser(const string& file) {
 
 Prog* parse(const string& file, const string& src) {
 	Prog* ret = nullptr;
-	unique_ptr<Context> context(new Context());
+	unique_ptr<Context> context(make_unique<Context>());
 	peg::any ctx(context.get());
 	try {
 		if (!parser(file).parse<Prog*>(src.c_str(), ctx, ret)) {
