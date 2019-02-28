@@ -26,6 +26,14 @@ struct Type {
 	virtual string toCxx() const = 0;
 };
 
+struct UndefType : public Type {
+	string dump() const override { return "?"; }
+	bool equal(const Type* t) const override { return dynamic_cast<const UndefType*>(t); }
+	Type* clone() const override { return new UndefType(); }
+	Expr* defaultExpr() const override;
+	string toCxx() const override { throw CompileError("undefined type cannot be translated"); };
+};
+
 struct IntType : public Type {
 	string dump() const override { return "int"; }
 	bool equal(const Type* t) const override { return dynamic_cast<const IntType*>(t); }
@@ -870,6 +878,10 @@ inline string Lambda::toCxx() const {
 	body_cxx += body->toCxx(retvar) + "\n";
 	body_cxx += "return " + retvar + ";\n";
 	return closure_cxx + args.toCxx() + "{\n" + indent(body_cxx) + "\n}";
+}
+
+inline Expr* UndefType::defaultExpr() const {
+	throw CompileError("undefined type cannot have a default value");
 }
 
 inline Expr* IntType::defaultExpr() const {
