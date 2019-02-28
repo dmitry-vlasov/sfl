@@ -23,6 +23,7 @@ struct Type {
 	virtual bool equal(const Type*) const = 0;
 	virtual Type* clone() const = 0;
 	virtual Expr* defaultExpr() const = 0;
+	virtual string toCxx() const = 0;
 };
 
 struct IntType : public Type {
@@ -30,6 +31,7 @@ struct IntType : public Type {
 	bool equal(const Type* t) const override { return dynamic_cast<const IntType*>(t); }
 	Type* clone() const override { return new IntType(); }
 	Expr* defaultExpr() const override;
+	string toCxx() const override { return "int"; };
 };
 
 struct ArrayType : public Type {
@@ -45,6 +47,9 @@ struct ArrayType : public Type {
 	}
 	Type* clone() const override { return new ArrayType(type->clone()); }
 	Expr* defaultExpr() const override;
+	string toCxx() const override {
+		return "std::vector<" + type->toCxx() + ">";
+	};
 };
 
 struct FuncType : public Type {
@@ -84,6 +89,17 @@ struct FuncType : public Type {
 		);
 	}
 	Expr* defaultExpr() const override;
+	string toCxx() const override {
+		string ret("std::function<");
+		ret += val->toCxx() + "(";
+		if (args.size()) {
+			ret += args[0]->toCxx();
+			for (int i = 1; i < args.size(); ++i) {
+				ret += ", " + args[i]->toCxx();
+			}
+		}
+		return ret + ")>";
+	};
 };
 
 struct Expr {
@@ -92,6 +108,7 @@ struct Expr {
 	virtual string dump() const = 0;
 	virtual set<string> freeVars() const = 0;
 	virtual Value* eval(State&) const = 0;
+	virtual string toCxx() const = 0;
 };
 
 struct IntConst : public Expr {
@@ -101,6 +118,7 @@ struct IntConst : public Expr {
 	string dump() const override { return to_string(val); }
 	set<string> freeVars() const override { return set<string>(); }
 	Value* eval(State&) const override { return new IntValue(val); }
+	string toCxx() const override { return to_string(val); }
 };
 
 struct BinOp : public Expr {
@@ -174,6 +192,14 @@ struct BinOp : public Expr {
 			throw RuntimeError("illegal arguments in binary operator");
 		}
 	}
+	string toCxx() const override {
+		if (dynamic_cast<const IntType*>(type())) {
+			return "(" + lhs->toCxx() + " " + dumpOp(op) + " " + rhs->toCxx() + ")";
+		} else {
+			//array case
+			return "concat_arrays(" + lhs->toCxx() + ", " + rhs->toCxx()+ ")";
+		}
+	}
 };
 
 struct UnOp : public Expr {
@@ -205,6 +231,7 @@ struct UnOp : public Expr {
 			throw RuntimeError("illegal arguments in binary operator");
 		}
 	}
+	string toCxx() const override { return "-" + expr->toCxx(); }
 };
 
 struct VarAccess : public Expr {
@@ -219,6 +246,7 @@ struct VarAccess : public Expr {
 	Value* eval(State& state) const override {
 		return state.get(name)->clone();
 	}
+	string toCxx() const override { return name; }
 };
 
 struct ArrayAccess : public Expr {
@@ -250,17 +278,20 @@ struct ArrayAccess : public Expr {
 			throw RuntimeError("Array index is out of bounds");
 		}
 	}
+	string toCxx() const override {
+		return arr->toCxx() + "[" + ind->toCxx() + "]";
+	}
 };
 
 struct ArrayMake : public Expr {
-	ArrayMake(const vector<Expr*>& es) {
+	ArrayMake(const vector<Expr*>& es, Type* elType = nullptr) {
 		if (!es.size()) {
 			throw CompileError("Cannot create empty array because it's type is unknown");
 		}
-		const Type* elementType = es[0]->type();
+		elementType.reset(elType ? elType : es[0]->type()->clone());
 		tp.reset(new ArrayType(elementType->clone()));
 		for (Expr* e : es) {
-			if (!e->type()->equal(elementType)) {
+			if (!e->type()->equal(elementType.get())) {
 				throw CompileError("All elements of an array must be of the same type");
 			}
 			arr.emplace_back(e);
@@ -268,6 +299,7 @@ struct ArrayMake : public Expr {
 	}
 	vector<unique_ptr<Expr>> arr;
 	unique_ptr<Type> tp;
+	unique_ptr<Type> elementType;
 	const Type* type() const override { return tp.get(); }
 	string dump() const override {
 		return "[" + dumpArray(arr) + "]";
@@ -285,6 +317,17 @@ struct ArrayMake : public Expr {
 			values.push_back(e->eval(state));
 		}
 		return new ArrayValue(values);
+	}
+	string toCxx() const override {
+		string ret;
+		ret += type()->toCxx() + "({";
+		if (arr.size()) {
+			ret += arr[0]->toCxx();
+			for (int i = 1; i < arr.size(); ++ i) {
+				ret += ", " + arr[i]->toCxx();
+			}
+		}
+		return ret + "})";
 	}
 };
 
@@ -307,6 +350,9 @@ struct ArrayLen : public Expr {
 	Value* eval(State& state) const override {
 		unique_ptr<ArrayValue> arrVal(dynamic_cast<ArrayValue*>(arr->eval(state)));
 		return new IntValue(arrVal->vect.size());
+	}
+	string toCxx() const override {
+		return arr->toCxx() + ".size()";
 	}
 };
 
@@ -355,6 +401,17 @@ struct FunCall : public Expr {
 			throw RuntimeError("call to non-function: " + val->dump());
 		}
 	}
+	string toCxx() const override {
+		string ret;
+		ret += fun->toCxx() + "(";
+		if (args.size()) {
+			ret += args[0]->toCxx();
+			for (int i = 1; i < args.size(); ++ i) {
+				ret += ", " + args[i]->toCxx();
+			}
+		}
+		return ret + ")";
+	}
 };
 
 struct VarDecl {
@@ -364,6 +421,9 @@ struct VarDecl {
 	const Type* type() const { return tp.get(); }
 	string dump() const {
 		return name + " : " + tp->dump();
+	}
+	string toCxx() const {
+		return tp->toCxx() + " " + name;
 	}
 };
 
@@ -382,6 +442,17 @@ struct ArgDecls {
 		}
 		return ret;
 	}
+	string toCxx() const {
+		string ret;
+		ret += "(";
+		if (decls.size()) {
+			ret += decls[0]->toCxx();
+			for (int i = 1; i < decls.size(); ++ i) {
+				ret += ", " + decls[i]->toCxx();
+			}
+		}
+		return ret + ")";
+	}
 };
 
 class Statement;
@@ -392,6 +463,7 @@ struct Lambda : public Expr {
 	const unique_ptr<Statement> body;
 	unique_ptr<Type> tp;
 	set<string> closureVars;
+	string recName;
 
 	int arity() const { return args.decls.size(); }
 	const Type* type() const override { return tp.get(); }
@@ -399,6 +471,7 @@ struct Lambda : public Expr {
 	set<string> freeVars() const override;
 	Value* eval(State& state) const override;
 	Value* call(State& state) const;
+	string toCxx() const override;
 };
 
 struct Cond {
@@ -425,7 +498,7 @@ struct Cond {
 		case LESSEQ:  return "<=";
 		case GREAT:   return ">";
 		case GREATEQ: return ">=";
-		case EQ:      return "=";
+		case EQ:      return "==";
 		}
 		return "";
 	}
@@ -453,6 +526,9 @@ struct Cond {
 			return lhsVal->equal(rhsVal.get());
 		}
 	}
+	string toCxx() const {
+		return "(" + lhs->toCxx() + " " + dumpOp(op) + " " + rhs->toCxx() + ")";
+	}
 };
 
 struct Statement {
@@ -462,6 +538,7 @@ struct Statement {
 	virtual set<string> freeVars() const = 0;
 	virtual set<string> declVars() const = 0;
 	virtual Value* eval(State& state) const = 0;
+	virtual string toCxx(const string& retvar = "") const = 0;
 };
 
 struct While : public Statement {
@@ -485,6 +562,9 @@ struct While : public Statement {
 			ret.reset(body->eval(state));
 		}
 		return ret.release();
+	}
+	string toCxx(const string& retvar = "") const override {
+		return "while (" + cond->toCxx() + ")\n" + indent(body->toCxx(retvar)) + "\n;";
 	}
 };
 
@@ -515,14 +595,21 @@ struct If : public Statement {
 			return neg->eval(state);
 		}
 	}
+	string toCxx(const string& retvar = "") const override {
+		return "if (" + cond->dump() + ")\n" + indent(pos->toCxx(retvar)) + "\nelse\n" + indent(neg->toCxx(retvar)) + "\n;";
+	}
 };
 
 struct Assign : public Statement {
-	Assign(VarDecl* d, Expr* e) : decl(d), expr(e), defaultExpr(e->type()->defaultExpr()) {
+	Assign(VarDecl* d, Expr* e, bool i) : initial(i), decl(d), expr(e), defaultExpr(e->type()->defaultExpr()) {
 		if (!d->type()->equal(e->type())) {
 			throw CompileError("Type mismatch in assignment: " + d->type()->dump() + " != " + e->type()->dump());
 		}
+		if (Lambda* lambda = dynamic_cast<Lambda*>(e)) {
+			lambda->recName = decl->name;
+		}
 	}
+	const bool initial;
 	unique_ptr<VarDecl> decl;
 	const unique_ptr<Expr> expr;
 	const unique_ptr<Expr> defaultExpr;
@@ -546,6 +633,14 @@ struct Assign : public Statement {
 		}
 		state.set(decl->name, val->clone());
 		return val;
+	}
+	string toCxx(const string& retvar = "") const override {
+		string var = initial ? decl->toCxx() : decl->name;
+		if (retvar != "") {
+			return var + " = " + expr->toCxx() + ";\n" + retvar + " = " + decl->name + ";";
+		} else {
+			return var + " = " + expr->toCxx() + ";";
+		}
 	}
 };
 
@@ -589,6 +684,13 @@ struct Seq : public Statement{
 		}
 		return val.release();
 	}
+	string toCxx(const string& retvar = "") const override {
+		string ret = "{\n";
+		for (int i = 0; i < seq.size(); ++ i) {
+			ret += indent(seq[i]->toCxx(i == seq.size() - 1 ? retvar : "")) + "\n";
+		}
+		return ret + "}";
+	}
 };
 
 struct StatExpr : public Statement {
@@ -604,6 +706,13 @@ struct StatExpr : public Statement {
 	}
 	Value* eval(State& state) const override {
 		return expr->eval(state);
+	}
+	string toCxx(const string& retvar = "") const override {
+		if (retvar != "") {
+			return retvar + " = " + expr->toCxx() + ";";
+		} else {
+			return expr->toCxx() + ";";
+		}
 	}
 };
 
@@ -623,7 +732,71 @@ struct Print : public Statement {
 		cout << val->dump() << endl;
 		return val;
 	}
+	string toCxx(const string& retvar = "") const override {
+		string to_print(expr->toCxx());
+		if (const FuncType* tp = dynamic_cast<const FuncType*>(type())) {
+			to_print = "\"" + expr->dump() + " : " + tp->dump() + "\"";
+		}
+		if (retvar == "") {
+			return "std::cout << " + to_print + " << std::endl;";
+		} else {
+			string ret;
+			ret += retvar + " = " + to_print + ";\n";
+			ret += "std::cout << " + retvar + " << std::endl;";
+			return ret;
+		}
+	}
 };
+
+const string cxx_includes =
+R"(#include <vector>
+#include <functional>
+#include <string>
+#include <iostream>
+
+)";
+
+const string cxx_runtime =
+R"(template<class T>
+std::vector<T> concat_arrays(const std::vector<T>& a1, const std::vector<T>& a2) {
+	std::vector<T> ret(a1);
+	for (const auto& x : a2) ret.push_back(x);
+	return ret; 
+}
+
+template<class T>
+std::ostream& operator << (std::ostream& os, const std::vector<T>& arr) {
+	os << "[";
+	if (arr.size()) {
+		os << arr[0];
+		for (int i = 1; i < arr.size(); ++i) {
+			os << ", " << arr[i];
+		}
+	}
+	os << "]";
+	return os;
+}
+
+)";
+
+const string cxx_main = R"(
+int main(int argc, const char** argv) {
+	std::vector<int> input;
+	for (int c = 1; c < argc; ++ c) {
+		input.push_back(std::stoi(argv[c]));
+	}
+	try {
+		run(input);
+	} catch (std::exception& e) {
+		std::cerr << e.what() << std::endl;
+		return 1;
+	} catch (...) {
+		std::cerr << "runtime error" << std::endl;
+		return 1;
+	}
+	return 0;
+}
+)";
 
 struct Prog {
 	Prog(Lambda* p) : lambda(p) { }
@@ -632,6 +805,16 @@ struct Prog {
 	string dump() const { return lambda->dump(); }
 	set<string> freeVars() const { return lambda->freeVars(); }
 	void run(const vector<int>&);
+	string toCxx() const {
+		string body;
+		body += "auto prog = " + lambda->toCxx() + ";\n";
+		body += "std::cout << prog(init) << std::endl;\n";
+		string run;
+		run = "void run(const std::vector<int>& init) {\n";
+		run += indent(body);
+		run += "}\n";
+		return cxx_includes + cxx_runtime + run + cxx_main;
+	}
 };
 
 inline Lambda::Lambda(Statement* b, const vector<VarDecl*>& a) :
@@ -664,6 +847,29 @@ inline Value* Lambda::eval(State& state) const {
 
 inline Value* Lambda::call(State& state) const {
 	return body->eval(state);
+}
+
+inline string Lambda::toCxx() const {
+	string closure_cxx;
+	closure_cxx += "[";
+	if (closureVars.size()) {
+		string var;
+		auto i = closureVars.begin();
+		var = *i++;
+		closure_cxx += (var == recName ? "&" + var : var);
+		while (i != closureVars.end()) {
+			var = *i++;
+			closure_cxx += ", " + (var == recName ? "&" + var : var);
+		}
+	}
+	closure_cxx += "]";
+	string body_cxx;
+	static int retvar_counter = 0;
+	string retvar = "ret_var_" + to_string(retvar_counter++);
+	body_cxx += body->type()->toCxx() + " " + retvar + ";\n";
+	body_cxx += body->toCxx(retvar) + "\n";
+	body_cxx += "return " + retvar + ";\n";
+	return closure_cxx + args.toCxx() + "{\n" + indent(body_cxx) + "\n}";
 }
 
 inline Expr* IntType::defaultExpr() const {

@@ -7,15 +7,17 @@ using namespace std;
 using namespace sfl;
 
 void print_usage() {
-	cout << "Usage: sfl [--show-ast] <program> <int arg 1> ... <int arg n>" << endl;
+	cout << "Usage: sfl [--ast, --cxx] <program> <int arg 1> ... <int arg n>" << endl;
 	exit(0);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, const char **argv) {
 	if (argc <= 1) print_usage();
 	int c = 1;
 	bool show_ast = false;
-	if ("--show-ast" == string(argv[c])) { ++c; show_ast = true; }
+	bool to_cxx = false;
+	if ("--ast" == string(argv[c])) { ++c; show_ast = true; }
+	if ("--cxx" == string(argv[c])) { ++c; to_cxx = true; }
 	if (c == argc) print_usage();
 	string file(argv[c++]);
 	ifstream in(file);
@@ -33,13 +35,15 @@ int main(int argc, char **argv) {
 		unique_ptr<Prog> prog(parse(file, src));
 		if (show_ast) {
 			cout << prog->dump() << endl;
-			cout << "-----------" << endl;
+		} else if (to_cxx) {
+			cout << prog->toCxx() << endl;
+		} else {
+			vector<int> input;
+			for (; c < argc; ++ c) {
+				input.push_back(stoi(argv[c]));
+			}
+			prog->run(input);
 		}
-		vector<int> input;
-		for (; c < argc; ++ c) {
-			input.push_back(stoi(argv[c]));
-		}
-		prog->run(input);
 	} catch (exception& err) {
 		cout << err.what() << endl;
 	} catch (...) {

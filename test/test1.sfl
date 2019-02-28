@@ -19,6 +19,7 @@
 	g : () -> int = /\ -> (x + x); 
 	//f : (int) -> int = z3; 
 	f : (int) -> int = /\ a : int -> (a * y);
+	print f;
 	z : [int] = [5];
 	while x < 10 do {
 		x = (x + 1);

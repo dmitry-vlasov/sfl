@@ -54,6 +54,17 @@ const char* sfl_syntax =
 	)";
 
 struct Context {
+	struct Decl {
+		void add(Type* t) {
+			if (type_) initial_ = false;
+			type_.reset(t);
+		}
+		Type* type() { return type_.get(); }
+		bool initial() const { return initial_; }
+	private:
+		unique_ptr<Type> type_;
+		bool initial_ = true;
+	};
 	~Context() {
 		for (auto e : unusedExprs) delete e;
 		for (auto s : unusedStats) delete s;
@@ -62,7 +73,7 @@ struct Context {
 		return types.empty();
 	}
 	void push() {
-		types.push_back(map<string, unique_ptr<Type>>());
+		types.push_back(map<string, Decl>());
 	}
 	void pop() {
 		types.pop_back();
@@ -72,17 +83,24 @@ struct Context {
 			if (!type->equal(tp)) {
 				throw CompileError("variable " + name + " is declared with different type: " + type->dump() + ", original type was: " + tp->dump());
 			} else {
-				types.back()[name].reset(type);
+				types.back()[name].add(type);
 			}
 		} else {
-			types.back()[name].reset(type);
+			types.back()[name].add(type);
 		}
 	}
 	void newDecl(const string& name, Type* type) {
 		if (Type* tp = findType(name)) {
 			throw CompileError("variable " + name + " is already declared");
 		} else {
-			types.back()[name].reset(type);
+			types.back()[name].add(type);
+		}
+	}
+	bool initialDecl(const string& name) {
+		if (Decl* decl = findDecl(name)) {
+			return decl->initial();
+		} else {
+			throw CompileError("variable " + name + " is undefined");
 		}
 	}
 	Type* getType(const string& name) {
@@ -93,10 +111,17 @@ struct Context {
 		}
 	}
 	Type* findType(const string& name) {
-		for (const auto& m : types) {
+		if (Decl* decl = findDecl(name)) {
+			return decl->type();
+		} else {
+			return nullptr;
+		}
+	}
+	Decl* findDecl(const string& name) {
+		for (auto& m : types) {
 			auto x = m.find(name);
 			if (x != m.end()) {
-				return x->second.get();
+				return &x->second;
 			}
 		}
 		return nullptr;
@@ -106,7 +131,7 @@ struct Context {
 	template<class T> vector<T*> useVect(const peg::any& t);
 
 private:
-	vector<map<string, unique_ptr<Type>>> types;
+	vector<map<string, Decl>> types;
 	set<Expr*> unusedExprs;
 	set<Statement*> unusedStats;
 };
@@ -319,13 +344,16 @@ peg::parser parser(const string& file) {
 			Type* type = ctx.get<Context*>()->getType(name);
 			return static_cast<Statement*>(new Assign(
 				new VarDecl(name, type->clone()),
-				ctx.get<Context*>()->use<Expr>(sv[1])
+				ctx.get<Context*>()->use<Expr>(sv[1]),
+				false
 			));
 		}
 		case 1:  {
+			VarDecl* decl = sv[0].get<VarDecl*>();
 			return static_cast<Statement*>(new Assign(
 				sv[0].get<VarDecl*>(),
-				ctx.get<Context*>()->use<Expr>(sv[1])
+				ctx.get<Context*>()->use<Expr>(sv[1]),
+				ctx.get<Context*>()->initialDecl(decl->name)
 			));
 		}
 		default: throw CompileError("impossible choice in STAT_ASSIGN");
