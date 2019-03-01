@@ -110,13 +110,21 @@ struct FuncType : public Type {
 	};
 };
 
-struct Expr {
-	virtual ~Expr() { }
+struct AstNode {
+	virtual ~AstNode() { }
 	virtual const Type* type() const = 0;
 	virtual string dump() const = 0;
 	virtual set<string> freeVars() const = 0;
 	virtual Value* eval(State&) const = 0;
+};
+
+struct Expr : public AstNode {
 	virtual string toCxx() const = 0;
+};
+
+struct Statement : public AstNode {
+	virtual set<string> declVars() const = 0;
+	virtual string toCxx(const string& retvar = "") const = 0;
 };
 
 struct IntConst : public Expr {
@@ -463,8 +471,6 @@ struct ArgDecls {
 	}
 };
 
-class Statement;
-
 struct Lambda : public Expr {
 	Lambda(Statement* b, const vector<VarDecl*>& a = vector<VarDecl*>());
 	ArgDecls args;
@@ -537,16 +543,6 @@ struct Cond {
 	string toCxx() const {
 		return "(" + lhs->toCxx() + " " + dumpOp(op) + " " + rhs->toCxx() + ")";
 	}
-};
-
-struct Statement {
-	virtual ~Statement() { }
-	virtual const Type* type() const = 0;
-	virtual string dump() const = 0;
-	virtual set<string> freeVars() const = 0;
-	virtual set<string> declVars() const = 0;
-	virtual Value* eval(State& state) const = 0;
-	virtual string toCxx(const string& retvar = "") const = 0;
 };
 
 struct While : public Statement {
