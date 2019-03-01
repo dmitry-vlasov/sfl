@@ -16,6 +16,7 @@ namespace sfl {
 using namespace std;
 
 class Expr;
+class UndefType;
 
 struct Type {
 	virtual ~Type() { }
@@ -24,6 +25,7 @@ struct Type {
 	virtual Type* clone() const = 0;
 	virtual Expr* defaultExpr() const = 0;
 	virtual string toCxx() const = 0;
+	virtual bool isDefined() const = 0;
 };
 
 struct UndefType : public Type {
@@ -32,6 +34,7 @@ struct UndefType : public Type {
 	Type* clone() const override { return new UndefType(); }
 	Expr* defaultExpr() const override;
 	string toCxx() const override { throw CompileError("undefined type cannot be translated"); };
+	bool isDefined() const override { return false; }
 };
 
 struct IntType : public Type {
@@ -40,6 +43,7 @@ struct IntType : public Type {
 	Type* clone() const override { return new IntType(); }
 	Expr* defaultExpr() const override;
 	string toCxx() const override { return "int"; };
+	bool isDefined() const override { return true; }
 };
 
 struct ArrayType : public Type {
@@ -58,6 +62,7 @@ struct ArrayType : public Type {
 	string toCxx() const override {
 		return "std::vector<" + type->toCxx() + ">";
 	};
+	bool isDefined() const override { return type->isDefined(); }
 };
 
 struct FuncType : public Type {
@@ -108,6 +113,13 @@ struct FuncType : public Type {
 		}
 		return ret + ")>";
 	};
+	bool isDefined() const override {
+		if (!val->isDefined()) return false;
+		for (const auto& arg : args) {
+			if (!arg->isDefined()) return false;
+		}
+		return true;
+	}
 };
 
 struct AstNode {
