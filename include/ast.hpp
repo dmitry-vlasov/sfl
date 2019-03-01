@@ -116,6 +116,7 @@ struct AstNode {
 	virtual string dump() const = 0;
 	virtual set<string> freeVars() const = 0;
 	virtual Value* eval(State&) const = 0;
+	const AstNode* parent = nullptr;
 };
 
 struct Expr : public AstNode {
@@ -140,6 +141,8 @@ struct IntConst : public Expr {
 struct BinOp : public Expr {
 	enum Kind { PLUS, MULT, SUB, DIV, RES };
 	BinOp(Expr* l, Expr* r, Kind o) : lhs(l), rhs(r), op(o) {
+		lhs->parent = this;
+		rhs->parent = this;
 		switch (op) {
 		case PLUS:
 			if (!lhs->type()->equal(rhs->type())) {
@@ -221,6 +224,7 @@ struct BinOp : public Expr {
 struct UnOp : public Expr {
 	enum Kind { MINUS };
 	UnOp(Expr* e, Kind o) : expr(e), op(o) {
+		expr->parent = this;
 		if (!expr->type()->equal(type())) {
 			throw CompileError("Unary operator - argument must be integer");
 		}
@@ -267,6 +271,8 @@ struct VarAccess : public Expr {
 
 struct ArrayAccess : public Expr {
 	ArrayAccess(Expr* a, Expr* i) : arr(a), ind(i) {
+		arr->parent = this;
+		ind->parent = this;
 		if (!dynamic_cast<const ArrayType*>(arr->type())) {
 			throw CompileError("Array expression is needed");
 		}
@@ -311,6 +317,7 @@ struct ArrayMake : public Expr {
 				throw CompileError("All elements of an array must be of the same type");
 			}
 			arr.emplace_back(e);
+			arr.back()->parent = this;
 		}
 	}
 	vector<unique_ptr<Expr>> arr;
@@ -349,6 +356,7 @@ struct ArrayMake : public Expr {
 
 struct ArrayLen : public Expr {
 	ArrayLen(Expr* a) : arr(a) {
+		arr->parent = this;
 		if (!dynamic_cast<const ArrayType*>(a->type())) {
 			throw CompileError("Array length argument must be an array");
 		}
@@ -374,6 +382,7 @@ struct ArrayLen : public Expr {
 
 struct FunCall : public Expr {
 	FunCall(Expr* f, const vector<Expr*>& ars = vector<Expr*>()) : fun(f) {
+		fun->parent = this;
 		const FuncType* fun_type = dynamic_cast<const FuncType*>(f->type());
 		if (!fun_type) {
 			throw CompileError("Function expression is needed");
@@ -386,6 +395,7 @@ struct FunCall : public Expr {
 				throw CompileError("Function argument type mismatch: " + fun_type->args[i]->dump() + " != " + ars[i]->type()->dump());
 			}
 			args.emplace_back(ars[i]);
+			args.back()->parent = this;
 		}
 	}
 	const unique_ptr<Expr> fun;
@@ -488,9 +498,11 @@ struct Lambda : public Expr {
 	string toCxx() const override;
 };
 
-struct Cond {
+struct Cond : public AstNode {
 	enum Kind { LESS, LESSEQ, GREAT, GREATEQ, EQ };
 	Cond(Expr* l, Expr* r, Kind o) : lhs(l), rhs(r), op(o) {
+		lhs->parent = this;
+		rhs->parent = this;
 		switch (o) {
 		case EQ:
 			if (!lhs->type()->equal(rhs->type())) {
@@ -516,13 +528,21 @@ struct Cond {
 		}
 		return "";
 	}
-	string dump() const {
+	const Type* type() const override {
+		// TODO: add bool type and implement this method.
+		throw CompileError("boolean type is not supported yet");
+	}
+	string dump() const override {
 		return lhs->dump() + " " + dumpOp(op) + " " + rhs->dump();
 	}
-	set<string> freeVars() const {
+	set<string> freeVars() const override {
 		return unite(lhs->freeVars(), rhs->freeVars());
 	}
-	bool eval(State& state) const {
+	Value* eval(State& state) const override {
+		// TODO: add bool type and implement this method.
+		throw CompileError("boolean type is not supported yet");
+	}
+	bool evalBool(State& state) const {
 		unique_ptr<Value> lhsVal(lhs->eval(state));
 		unique_ptr<Value> rhsVal(rhs->eval(state));
 		if (dynamic_cast<const IntType*>(lhs->type())) {
@@ -546,7 +566,10 @@ struct Cond {
 };
 
 struct While : public Statement {
-	While(Cond* c, Statement* b) : cond(c), body(b), defaultExpr(b->type()->defaultExpr()) { }
+	While(Cond* c, Statement* b) : cond(c), body(b), defaultExpr(b->type()->defaultExpr()) {
+		cond->parent = this;
+		body->parent = this;
+	}
 	const unique_ptr<Cond> cond;
 	const unique_ptr<Statement> body;
 	const unique_ptr<Expr> defaultExpr;
@@ -562,7 +585,7 @@ struct While : public Statement {
 	}
 	Value* eval(State& state) const override {
 		unique_ptr<Value> ret(defaultExpr->eval(state));
-		while (cond->eval(state)) {
+		while (cond->evalBool(state)) {
 			ret.reset(body->eval(state));
 		}
 		return ret.release();
@@ -574,6 +597,9 @@ struct While : public Statement {
 
 struct If : public Statement {
 	If(Cond* c, Statement* p, Statement* n) : cond(c), pos(p), neg(n) {
+		cond->parent = this;
+		pos->parent = this;
+		neg->parent = this;
 		if (!pos->type()->equal(neg->type())) {
 			throw CompileError("Types differ in positive and negative branches: " + pos->type()->dump() + " != " + neg->type()->dump());
 		}
@@ -593,7 +619,7 @@ struct If : public Statement {
 		return unite(pos->declVars(), neg->declVars());
 	}
 	Value* eval(State& state) const override {
-		if (cond->eval(state)) {
+		if (cond->evalBool(state)) {
 			return pos->eval(state);
 		} else {
 			return neg->eval(state);
@@ -606,6 +632,7 @@ struct If : public Statement {
 
 struct Assign : public Statement {
 	Assign(VarDecl* d, Expr* e, bool i) : initial(i), decl(d), expr(e), defaultExpr(e->type()->defaultExpr()) {
+		expr->parent = this;
 		if (!d->type()->equal(e->type())) {
 			throw CompileError("Type mismatch in assignment: " + d->type()->dump() + " != " + e->type()->dump());
 		}
@@ -650,7 +677,10 @@ struct Assign : public Statement {
 
 struct Seq : public Statement{
 	Seq(const vector<Statement*>& v) {
-		for (auto s : v) seq.emplace_back(s);
+		for (auto s : v) {
+			seq.emplace_back(s);
+			seq.back()->parent = this;
+		}
 	}
 	vector<unique_ptr<Statement>> seq;
 	const Type* type() const override {
@@ -698,7 +728,9 @@ struct Seq : public Statement{
 };
 
 struct StatExpr : public Statement {
-	StatExpr(Expr* e) : expr(e) { }
+	StatExpr(Expr* e) : expr(e) {
+		expr->parent = this;
+	}
 	const unique_ptr<Expr> expr;
 	const Type* type() const override { return expr->type(); }
 	string dump() const override { return expr->dump(); }
@@ -721,7 +753,9 @@ struct StatExpr : public Statement {
 };
 
 struct Print : public Statement {
-	Print(Expr* e) : expr(e) { }
+	Print(Expr* e) : expr(e) {
+		expr->parent = this;
+	}
 	const unique_ptr<Expr> expr;
 	const Type* type() const override { return expr->type(); }
 	string dump() const override { return "print " + expr->dump(); }
