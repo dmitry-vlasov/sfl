@@ -1,8 +1,6 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.8)
 
-project (SPL)
-
-set(CMAKE_CXX_STANDARD 17)
+project (SFL)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -12,3 +10,6 @@ include_directories(
 
 # sources
 add_subdirectory (src)
+
+target_compile_features(sfl PUBLIC cxx_std_17)
+

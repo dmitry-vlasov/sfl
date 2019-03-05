@@ -7,4 +7,3 @@ include_directories(
 
 add_executable(sfl sema.cpp parser.cpp unify.cpp main.cpp)
 
-target_link_libraries(sfl stdc++fs)
