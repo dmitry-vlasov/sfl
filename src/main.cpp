@@ -1,7 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <iterator>
-#include "ast.hpp"
+
+#include "../include/sfl_ast.hpp"
 
 using namespace std;
 using namespace sfl;

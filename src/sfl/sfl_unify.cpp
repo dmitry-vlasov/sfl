@@ -1,5 +1,6 @@
 #include <cassert>
-#include "ast.hpp"
+
+#include "sfl_ast.hpp"
 
 namespace sfl {
 

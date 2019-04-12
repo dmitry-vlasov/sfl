@@ -9,7 +9,7 @@
 #include <set>
 #include <iostream>
 
-#include "sema.hpp"
+#include "sfl_sema.hpp"
 
 namespace sfl {
 
