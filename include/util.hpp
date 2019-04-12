@@ -8,8 +8,6 @@
 #include <numeric>
 #include <set>
 
-namespace sfl {
-
 using namespace std;
 
 struct CompileError : public exception {
@@ -75,6 +73,4 @@ inline string dumpArray(const vector<T>& arr, const string& delim = ", ") {
 		}
 	}
 	return ret;
-}
-
 }

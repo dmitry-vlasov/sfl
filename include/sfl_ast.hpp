@@ -16,7 +16,6 @@ namespace sfl {
 using namespace std;
 
 class Expr;
-class UndefType;
 
 struct Type {
 	virtual ~Type() { }

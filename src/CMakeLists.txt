@@ -8,7 +8,9 @@ include_directories(
 add_executable(sfl 
 	sfl/sfl_sema.cpp 
 	sfl/sfl_parser.cpp 
-	sfl/sfl_unify.cpp 
+	sfl/sfl_unify.cpp
+	sbl/sbl_sema.cpp 
+	sbl/sbl_parser.cpp 
 	main.cpp
 )
 
