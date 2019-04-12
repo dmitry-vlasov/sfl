@@ -949,4 +949,6 @@ inline Expr* FuncType::defaultExpr() const {
 
 Prog* parse(const string& file, const string& src);
 
+Prog* eliminate_closures(const Prog*);
+
 }

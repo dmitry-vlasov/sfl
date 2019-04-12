@@ -22,7 +22,7 @@ const char* sbl_syntax =
 		COND        <- EXPR COND_OP EXPR
 		COND_OP     <- '<=' / '>=' / '<' / '>' / '=' 
 
-		EXPR         <- EX_INT / EX_BINARY / EX_UNARY / EX_ARR_ACCESS  / EX_ARR_MAKE / EX_ARR_LEN / EX_FUN_CALL / EX_LAMBDA / EX_VAR
+		EXPR         <- EX_INT / EX_BINARY / EX_UNARY / EX_ARR_ACCESS  / EX_ARR_MAKE / EX_ARR_LEN / EX_VAR
 		EX_INT       <- < [0-9]+ >
 		EX_VAR       <- ID
 		EX_BINARY    <- '(' EXPR BINARY_OP EXPR ')'
